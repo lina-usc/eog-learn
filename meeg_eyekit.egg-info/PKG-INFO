@@ -1,0 +1,87 @@
+Metadata-Version: 2.1
+Name: meeg-eyekit
+Version: 0.1.dev0
+Summary: MEEG-eyekit: Remove EOG artifact from simultaneously collected MEEG eye-tracking data.
+Maintainer-email: Scott Huberty <seh33@uw.edu>, Christian O'Reilly <christian.oreilly@sc.edu>
+License: BSD 3-Clause License
+        
+        Copyright (c) 2022, MNE
+        All rights reserved.
+        
+        Redistribution and use in source and binary forms, with or without
+        modification, are permitted provided that the following conditions are met:
+        
+        1. Redistributions of source code must retain the above copyright notice, this
+           list of conditions and the following disclaimer.
+        
+        2. Redistributions in binary form must reproduce the above copyright notice,
+           this list of conditions and the following disclaimer in the documentation
+           and/or other materials provided with the distribution.
+        
+        3. Neither the name of the copyright holder nor the names of its
+           contributors may be used to endorse or promote products derived from
+           this software without specific prior written permission.
+        
+        THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+        AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+        IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+        DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+        FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+        DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+        SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+        CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+        OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+        OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+Project-URL: source, https://github.com/scott-huberty/meeg-eyekit
+Project-URL: tracker, https://github.com/scott-huberty/meeg-eyekit/issues
+Keywords: meg,eeg,eyetracking,neuroscience
+Classifier: Operating System :: Microsoft :: Windows
+Classifier: Operating System :: Unix
+Classifier: Operating System :: MacOS
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Natural Language :: English
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Intended Audience :: Science/Research
+Classifier: Intended Audience :: Developers
+Classifier: Topic :: Software Development
+Classifier: Topic :: Scientific/Engineering
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: matplotlib>=3.5.0
+Requires-Dist: mne>=1.5
+Requires-Dist: numpy>=1.21.2
+Requires-Dist: scipy>=1.7.1
+Requires-Dist: tensorflow-cpu
+Provides-Extra: gpu
+Requires-Dist: tensorflow; extra == "gpu"
+Provides-Extra: doc
+Requires-Dist: numpydoc; extra == "doc"
+Requires-Dist: shibuya; extra == "doc"
+Requires-Dist: sphinx; extra == "doc"
+Requires-Dist: sphinxcontrib-bibtex; extra == "doc"
+Requires-Dist: sphinx-copybutton; extra == "doc"
+Requires-Dist: sphinxemoji; extra == "doc"
+Requires-Dist: sphinx-design; extra == "doc"
+Requires-Dist: sphinx-gallery; extra == "doc"
+Requires-Dist: sphinx-issues; extra == "doc"
+Provides-Extra: test
+Requires-Dist: black; extra == "test"
+Requires-Dist: codespell; extra == "test"
+Requires-Dist: isort; extra == "test"
+Requires-Dist: ruff; extra == "test"
+Requires-Dist: pydocstyle[toml]; extra == "test"
+Requires-Dist: pytest; extra == "test"
+Requires-Dist: pytest-cov; extra == "test"
+Provides-Extra: all
+Requires-Dist: meeg-eyekit[gpu]; extra == "all"
+Requires-Dist: meeg-eyekit[doc]; extra == "all"
+Requires-Dist: meeg-eyekit[test]; extra == "all"
+Provides-Extra: full
+Requires-Dist: meeg-eyekit[all]; extra == "full"
+
+Tools for denoising EOG artifacts from simultaneously collected MEEG & eye-tracking data.
