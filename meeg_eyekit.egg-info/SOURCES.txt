@@ -1,8 +1,0 @@
-LICENSE
-README.md
-pyproject.toml
-meeg_eyekit.egg-info/PKG-INFO
-meeg_eyekit.egg-info/SOURCES.txt
-meeg_eyekit.egg-info/dependency_links.txt
-meeg_eyekit.egg-info/requires.txt
-meeg_eyekit.egg-info/top_level.txt

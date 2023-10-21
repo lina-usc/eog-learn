@@ -35,4 +35,4 @@ jobs:
 
       - name: Test import
         run: |
-          python -c "import meeg_eyekit"
+          python -c "import eoglearn"

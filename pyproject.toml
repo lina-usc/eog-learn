@@ -3,9 +3,9 @@ requires = ['setuptools >= 61.0.0']
 build-backend = 'setuptools.build_meta'
 
 [project]
-name = 'meeg-eyekit'
+name = 'EOGLearn'
 version = "0.1.dev0"
-description = 'MEEG-eyekit: Remove EOG artifact from simultaneously collected MEEG eye-tracking data.'
+description = 'EOGLearn: Remove EOG artifact from simultaneously collected MEEG eye-tracking data.'
 readme = 'README.md'
 license = {file = 'LICENSE'}
 requires-python = '>=3.8'
@@ -69,18 +69,18 @@ test = [
     'pytest-cov',
 ]
 all = [
-    'meeg-eyekit[gpu]',
-    'meeg-eyekit[doc]',
-    'meeg-eyekit[test]',
+    'eoglearn[gpu]',
+    'eoglearn[doc]',
+    'eoglearn[test]',
 ]
 full = [
-    'meeg-eyekit[all]',
+    'eoglearn[all]',
 ]
 
 [project.urls]
-source = 'https://github.com/scott-huberty/meeg-eyekit'
-tracker = 'https://github.com/scott-huberty/meeg-eyekit/issues'
-# documentation = 'https://mne.tools/mne-icalabel'
+source = 'https://github.com/scott-huberty/EOGLearn'
+tracker = 'https://github.com/scott-huberty/EOGLearn/issues'
+# documentation = 'https://github.com/scott-huberty/EOGLearn/'
 
 [tool.setuptools]
 include-package-data = false
