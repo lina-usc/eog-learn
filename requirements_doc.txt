@@ -1,0 +1,9 @@
+numpydoc
+shibuya
+sphinx
+sphinxcontrib-bibtex
+sphinx-copybutton
+sphinxemoji
+sphinx-design
+sphinx-gallery
+sphinx-issues
