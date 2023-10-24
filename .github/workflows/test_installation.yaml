@@ -32,15 +32,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .[full]
+          pip install pandas
 
       - name: Test import
         run: |
           python -c "import eoglearn"
 
-      - name: Test style
-        run: |
-          codespell eoglearn
-          ruff eoglearn
       - name: Run tests
         run: |
           pytest eoglearn --cov=eoglearn --cov-report=xml --cov-config=pyproject.toml
