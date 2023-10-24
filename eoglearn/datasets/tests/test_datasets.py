@@ -1,6 +1,3 @@
-import numpy as np
-
-
 def test_read_mne_eyetracking_raw(mne_fixture):
     """Test the read_mne_eyetracking_raw function."""
     ch_types = mne_fixture.raw.get_channel_types()
