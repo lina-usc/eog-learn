@@ -9,12 +9,12 @@ from mne.utils import logger
 
 
 def read_mne_eyetracking_raw(return_events=False):
-    """Return a MNE Raw object containing the EyeLink dataset.
+    """Return an MNE Raw object containing the EyeLink dataset.
 
     Parameters
     ----------
     return_events : bool
-        If True, return the events for the eyetracking and EEG data.
+        If ``True``, return the events for the eyetracking and EEG data.
 
     Returns
     -------
@@ -23,6 +23,13 @@ def read_mne_eyetracking_raw(return_events=False):
     events : dict
         A dictionary where the values for "eyetrack" and "EEG" keys are the
         events arrays for the eyetracking and EEG data, respectively.
+
+    Notes
+    -----
+    See MNE-Python's
+    `tutorial <https://mne.tools/dev/auto_tutorials/preprocessing/\
+        90_eyetracking_data.html>`_
+    for more information on this dataset.
     """
     data_path = mne.datasets.eyelink.data_path()
     if mne.utils.check_version("mne", "1.6"):
