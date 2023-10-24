@@ -3,18 +3,19 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to EOGLearn's documentation!
-====================================
+EOGLearn: A Machine Learnign Library for Denoising EOG artifact from EEG data
+=============================================================================
+
+EOGLearn is a python package for denoising EOG artifact from EEG data. It currently
+requires the user to have simultaneously collected EEG and Eye-tracking data. This 
+project is in the proof-of-concept stage, and contributions are very much welcome!
+Please see the contributing section or the Roadmap for details on how to get involved.
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
-
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+   installation
+   implementation
+   API/API_index
+   contributing

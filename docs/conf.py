@@ -33,11 +33,14 @@ extensions = [
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
+# Allows us to use the ..todo:: directive
+todo_include_todos = True
+
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = "shibuya"
+html_theme = "pydata_sphinx_theme"
 html_static_path = ["_static"]
 
 # Enable numref for automatically numbering Figures, i.e "Fig 1"
@@ -51,3 +54,32 @@ numpydoc_xref_param_type = True
 numpydoc_validate = True
 # Only generate documentation for public members
 autodoc_default_flags = ["members", "undoc-members", "inherited-members"]
+
+numpydoc_xref_aliases = {
+    # Python
+    "file-like": ":term:`file-like <python:file object>`",
+    "iterator": ":term:`iterator <python:iterator>`",
+    "path-like": ":term:`path-like`",
+    "array-like": ":term:`array_like <numpy:array_like>`",
+    "Path": ":class:`python:pathlib.Path`",
+    "bool": ":class:`python:bool`",
+    "dictionary": ":class:`python:dict`",
+}
+numpydoc_xref_ignore = {
+    # words
+    "instance",
+    "instances",
+    "of",
+    "default",
+    "shape",
+    "or",
+    "with",
+    "length",
+    "pair",
+    "matplotlib",
+    "optional",
+    "kwargs",
+    "in",
+    "dtype",
+    "object",
+}
