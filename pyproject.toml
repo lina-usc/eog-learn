@@ -36,11 +36,8 @@ classifiers = [
     'Topic :: Scientific/Engineering',
 ]
 dependencies = [
-    'matplotlib>=3.5.0',
     'mne >= 1.5',
-    'numpy >= 1.21.2',
     'scikit-learn >= 1.0',
-    'scipy >= 1.7.1',
     'tensorflow-cpu',
 ]
 
@@ -128,14 +125,16 @@ add_ignore = 'D100,D104,D107'
 [tool.pytest.ini_options]
 minversion = '6.0'
 addopts = '--durations 20 --junit-xml=junit-results.xml --verbose'
-filterwarnings = []
+filterwarnings = [
+    "ignore:ml_dtypes.float8_e4m3b11 is deprecated.",
+    ]
 
 [tool.coverage.run]
 branch = true
 cover_pylib = false
 omit = [
     '**/__init__.py',
-    '**/meeg_eyekit/_version.py',
+    '**/eoglearn/_version.py',
     '**/tests/**',
 ]
 
@@ -145,3 +144,16 @@ exclude_lines = [
     'if __name__ == .__main__.:',
 ]
 precision = 2
+
+[tool.ruff]
+select = ["E", "F", "W", "D", "I"]
+exclude = ["__init__.py"]
+ignore = [
+    "D100", # Missing docstring in public module
+    "D104", # Missing docstring in public package
+    "D413", # Missing blank line after last section
+]
+
+[tool.ruff.pydocstyle]
+convention = "numpy"
+ignore-decorators = []

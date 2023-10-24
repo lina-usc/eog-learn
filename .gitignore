@@ -2,7 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+eoglearn/__pycache__/
 # C extensions
 *.so
 
@@ -50,6 +50,7 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+junit-results.xml
 
 # Translations
 *.mo
