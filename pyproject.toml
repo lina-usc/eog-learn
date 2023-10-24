@@ -47,7 +47,7 @@ gpu = [
 ]
 doc = [
     'numpydoc',
-    'shibuya',
+    'pydata_sphinx_theme',
     'sphinx',
     'sphinxcontrib-bibtex',
     'sphinx-copybutton',
