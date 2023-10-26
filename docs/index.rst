@@ -3,7 +3,7 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-EOGLearn: A Machine Learnign Library for Denoising EOG artifact from EEG data
+EOGLearn: A Machine Learning Library for Denoising EOG artifact from EEG data
 =============================================================================
 
 EOGLearn is a python package for denoising EOG artifact from EEG data. It currently
