@@ -10,10 +10,10 @@ which presents a subject with a series of dots at fixed locations on the screen.
 
 # %%
 # Import the necessary packages
-from eoglearn.datasets import fetch_eeyeenet
+from eoglearn.datasets import fetch_eegeyenet
 from eoglearn.io import read_raw_eegeyenet
 
-fpath = fetch_eeyeenet()
+fpath = fetch_eegeyenet()
 fname = fpath / "EP10_DOTS1_EEG.mat"
 raw = read_raw_eegeyenet(fname)
 raw.plot()

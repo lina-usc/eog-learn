@@ -18,4 +18,5 @@ Please see the contributing section or the Roadmap for details on how to get inv
    installation
    implementation
    API/API_index
+   auto_examples/index.rst
    contributing
