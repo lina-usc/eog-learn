@@ -10,7 +10,9 @@ stage.
    :hidden:
 
    datasets
+   io
    models
 
 - :doc:`datasets`
+- :doc:`io`
 - :doc:`models`
