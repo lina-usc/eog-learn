@@ -135,3 +135,6 @@ my_project_ll_config.yaml
 
 # VSCode ignore
 .vscode
+
+# sphinx gallery
+docs/auto_examples/

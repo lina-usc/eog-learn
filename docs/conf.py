@@ -27,6 +27,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.todo",
     "sphinx_design",
+    "sphinx_gallery.gen_gallery",
     "sphinxemoji.sphinxemoji",
 ]
 
@@ -82,4 +83,10 @@ numpydoc_xref_ignore = {
     "in",
     "dtype",
     "object",
+}
+
+# Sphinx Gallery configuration ------------------------------------------------
+sphinx_gallery_conf = {
+    "examples_dirs": "../examples",  # path to tutorial python scripts
+    "gallery_dirs": "auto_examples",  # path to where to save gallery generated output
 }
