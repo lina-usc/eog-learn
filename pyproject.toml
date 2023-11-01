@@ -57,7 +57,7 @@ doc = [
     'sphinx-issues',
 ]
 
-extras = ['pymatreader']
+extras = ['pymatreader', 'pandas']
 
 test = [
     'black',
