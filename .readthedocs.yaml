@@ -24,4 +24,4 @@ python:
       path: .
       extra_requirements:
         - doc
-        - pymatreader
+        - extras

@@ -57,6 +57,8 @@ doc = [
     'sphinx-issues',
 ]
 
+extras = ['pymatreader']
+
 test = [
     'black',
     'codespell',
