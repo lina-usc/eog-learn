@@ -22,6 +22,7 @@ def read_raw_eegeyenet(fname):
     fname : str | pathlib.Path
         Path to the EEGEyeNet file to load. EEGEyeNet files can be downloaded with
         :func:`fetch_eegeyenet`.
+
     Returns
     -------
     mne.io.Raw
