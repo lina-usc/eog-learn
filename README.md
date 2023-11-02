@@ -1,6 +1,6 @@
 [![Documentation Status](https://readthedocs.org/projects/eoglearn/badge/?version=latest)](https://eoglearn.readthedocs.io/en/latest/?badge=latest)
 
-This package contains tools for denoising EOG artifact using simultaneously collected M/EEG & eye-tracking data. This project is currently in the proof-of-concept stage and we consider this software as pre-alpha, meaning that it is not ready to be used by end users. However, we include documentation (API, tutorials), and helper functions for loading open-access eeg-eyetracking data, as to make contributing to the development of this project feasible for anyone that is interested. See the road map below
+This package contains tools for denoising EOG artifact using simultaneously collected M/EEG & eye-tracking data. It is currently in developmet by Scott Huberty & Dr. Christian O'Reilly (and under the supervision of Dr. O'Reilly). This project is currently in the proof-of-concept stage and we consider this software as pre-alpha, meaning that it is not ready to be used by end users. However, we include documentation (API, tutorials), and helper functions for loading open-access eeg-eyetracking data, as to make contributing to the development of this project feasible for anyone that is interested. See the road map below
 
 
 Problem Statement
