@@ -15,7 +15,6 @@ def test_build_model(mne_fixture):
     # set up model
     raw = mne_fixture.raw
     eog_denoiser = EOGDenoiser(raw=raw, downsample=10)
-    assert 1 == 0
 
     # test model attributes
     assert eog_denoiser.downsample == 10
