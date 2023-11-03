@@ -27,9 +27,6 @@ class EOGDenoiser:
         Eyetracking channels will be decimated without any filtering. resampling and
         decimating will be done on copies of the data, so the original input data will
         be preserved.
-    filter : tuple
-        The bandpass filter to apply to the EEG data. The filter will only be applied
-        to a copy of the raw data, and the original data will be preserved.
     n_units : int
         The number of units to pass into the initial LSTM layer. Defaults to 50.
     n_times : int
@@ -41,8 +38,6 @@ class EOGDenoiser:
         The original input ``mne.io.Raw`` instance.
     downsample : int
         The factor by which the data was downsampled.
-    filter : tuple
-        The bandpass filter that was applied to the EEG data.
     n_units : int
         The number of units in the initial LSTM layer.
     n_times : int
