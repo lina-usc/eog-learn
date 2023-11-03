@@ -4,9 +4,8 @@
 # License: BSD-3-Clause
 
 import matplotlib.pyplot as plt
-import mne
 import numpy as np
-from mne.utils import logger, warn
+from mne.utils import logger
 from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.layers import LSTM
 from tensorflow.keras.models import Sequential
