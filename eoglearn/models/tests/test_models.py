@@ -2,8 +2,8 @@
 #
 # License: BSD-3-Clause
 
-from eoglearn.models import EOGDenoiser
 import mne
+from eoglearn.models import EOGDenoiser
 
 
 def test_build_model(mne_fixture):
