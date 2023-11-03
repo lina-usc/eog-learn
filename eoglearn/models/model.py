@@ -3,10 +3,10 @@
 #
 # License: BSD-3-Clause
 
-import mne
 import matplotlib.pyplot as plt
-from mne.utils import logger
+import mne
 import numpy as np
+from mne.utils import logger, warn
 from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.layers import LSTM
 from tensorflow.keras.models import Sequential
@@ -75,7 +75,6 @@ class EOGDenoiser:
         self,
         raw,
         downsample=10,
-        mne_filter=(1, 30),
         n_units=50,
         n_times=100,
     ):
@@ -85,8 +84,8 @@ class EOGDenoiser:
         # MNE Raw object and preprocessing parameters
         #############################################
         self.raw = raw
+
         self.downsample = downsample
-        self.filter = mne_filter
         #############################
         # Set up the Keras LSTM Model
         #############################
@@ -120,8 +119,6 @@ class EOGDenoiser:
         """Return an array of the raw EEG data."""
         if self.__y is None:
             eeg_data = self.raw.copy()
-            if self.filter:
-                eeg_data.filter(*self.filter)
             if self.downsample:
                 eeg_data.resample(self.downsampled_sfreq)
             eeg_data = eeg_data.get_data(picks="eeg").T
@@ -177,7 +174,14 @@ class EOGDenoiser:
             (-1, self.n_times, self.Y.shape[-1]), order="C"
         )
 
-    def fit_model(self, fitting_kwargs=None):
+    def fit_model(
+        self,
+        epochs=10,
+        validation_split=0.2,
+        batch_size=1,
+        verbose=2,
+        fitting_kwargs=None,
+    ):
         """Fit the EOGDenoiser model using the input Raw object.
 
         Parameters
@@ -188,15 +192,14 @@ class EOGDenoiser:
             ``dict(epochs=50, validation_split=0.2, batch_size=1, verbose=2)``.
         """
         if fitting_kwargs is None:
-            fitting_kwargs = dict(
-                epochs=50,
-                validation_split=0.2,
-                batch_size=1,
-                verbose=2,
-            )
+            fitting_kwargs = dict()
         self.model.fit(
             self.X_train,
             self.Y_train,
+            epochs=epochs,
+            validation_split=validation_split,
+            batch_size=batch_size,
+            verbose=verbose,
             **fitting_kwargs,
         )
 
@@ -275,8 +278,24 @@ class EOGDenoiser:
         self.denoised_neural_ = Y_train - predicted_eog
         return self.denoised_neural_
 
-    def plot_eog_topo(self):
-        """Plot the topography of the eyetracking data."""
+    def plot_eog_topo(self, montage, show=True):
+        """Plot the topography of the eyetracking data.
+
+        Parameters
+        ----------
+        montage : mne.channels.DigMontage | str
+            Montage for digitized electrode and headshape position data.
+            See mne.channels.make_standard_montage(), and
+            mne.channels.get_builtin_montages() for more information
+            on making montage objects in MNE.
+        show : bool
+            Whether to show the plot or not. Defaults to True.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            The resulting figure object for the topomap plot.
+        """
         if not hasattr(self, "denoised_neural_"):
             logger.info(
                 "Denoising neural data, saving to ``denoised_neural_`` attribute."
@@ -298,20 +317,19 @@ class EOGDenoiser:
         percent_noise *= 100
         eeg_names = self.raw.copy().pick("eeg").ch_names[:-1]
         data_dict = dict(list(zip(eeg_names, percent_noise)))
-        montage = mne.channels.make_standard_montage("GSN-HydroCel-129")
+        montage = montage
         fig, ax = plt.subplots(constrained_layout=True)
 
         plot_values_topomap(
             data_dict,
             montage,
-            ax,
+            axes=ax,
             vmin=percent_noise.min(),
             vmax=percent_noise.max(),
             names=None,
             image_interp="linear",
-            side_cb="right",
             sensors=True,
-            show_names=True,
+            show=show,
         )
         ax.set_title(
             "Percentage of EEG signal that is accounted for by Ocular Artifact"

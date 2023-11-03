@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.abspath("../"))
 extensions = [
     "numpydoc",
     "sphinx.ext.autodoc",
+    "sphinx.ext.intersphinx",
     "sphinx.ext.todo",
     "sphinx_design",
     "sphinx_gallery.gen_gallery",
@@ -37,6 +38,18 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 # Allows us to use the ..todo:: directive
 todo_include_todos = True
 
+# -- Options for intersphinx extension ---------------------------------------
+
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "pandas": ("https://pandas.pydata.org/docs/", None),
+    "xarray": ("https://docs.xarray.dev/en/stable/", None),
+    "mne": ("https://mne.tools/dev", None),
+    "mne_icalabel": ("https://mne.tools/mne-icalabel/dev", None),
+    "mne_bids": ("https://mne.tools/mne-bids/dev", None),
+    "eoglearn": ("https://eoglearn.readthedocs.io/en/latest/", None),
+}
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output

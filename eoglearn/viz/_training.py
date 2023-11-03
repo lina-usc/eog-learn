@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 
 
 def plot_training(model, axes=None):
-    """Plots the training history of a model.
+    """Plot the training history of a model.
 
     Parameters
     ----------

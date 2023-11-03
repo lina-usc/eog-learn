@@ -1,29 +1,30 @@
-import numpy as np
 import warnings
 
-import mne
 import matplotlib.pyplot as plt
+import mne
+import numpy as np
+from mne.viz.utils import plt_show
 
 
 def plot_values_topomap(
     value_dict,
     montage,
-    axes,
+    *,
+    axes=None,
     colorbar=True,
     cmap="RdBu_r",
     vmin=None,
     vmax=None,
     names=None,
     image_interp="bilinear",
-    side_cb="right",
     sensors=True,
-    show_names=True,
+    show=True,
     **kwargs
 ):
     """Plot a 2D topographic map of EEG data.
 
     Parameters
-    ---------
+    ----------
     value_dict : dict
         a dict containing EEG sensor names as keys, and a scalar value as values.
         The value is subject to what is to be plotted. (For example, it can be an
@@ -36,10 +37,7 @@ def plot_values_topomap(
     axes : matplotlib.axes
         The axes object to plot on
     colorbar | bool
-        if True, show the corresponding colorbar for z value
-    side_cb: str
-        The side of the plot to display the colorbar. must be one fo "left",
-        "right". Defaults to "Right".
+        if True, show the corresponding colorbar for z values
     cmap : matplotlib colormap | str | None
         The matplotlib colormap to use. Defaults to 'RdBu_r'
     vmin : float | None
@@ -54,9 +52,8 @@ def plot_values_topomap(
     sensors : bool
         Whether to plot black dots on the topoplot, representing the EEG sensor
         positions. Defaults to True.
-    show_names : bool
-        Whether to plot the EEG sensor names over their corresponding location
-        on the topoplot. Defaults to True.
+    show : bool
+        Whether to show the plot or not. Defaults to True.
     kwargs : dict
         Valid keyword arguments for mne.viz.plot_topomap
 
@@ -75,6 +72,11 @@ def plot_values_topomap(
             np.zeros((len(names), 1)), info, copy=None, verbose=False
         ).set_montage(montage)
 
+    if axes:
+        ax = axes
+        fig = ax.figure
+    else:
+        fig, ax = plt.subplots(constrained_layout=True)
     im = mne.viz.plot_topomap(
         [value_dict[ch] for ch in names],
         pos=info,
@@ -82,7 +84,7 @@ def plot_values_topomap(
         image_interp=image_interp,
         sensors=sensors,
         res=64,
-        axes=axes,
+        axes=ax,
         names=names,
         vlim=[vmin, vmax],
         cmap=cmap,
@@ -90,14 +92,6 @@ def plot_values_topomap(
     )
 
     if colorbar:
-        try:
-            cbar, cax = mne.viz.topomap._add_colorbar(
-                axes, im[0], cmap, pad=0.05, format="%3.2f", side=side_cb
-            )
-            axes.cbar = cbar
-            cbar.ax.tick_params(labelsize=12)
-
-        except TypeError:
-            pass
-
-    return im
+        fig.colorbar(im[0], ax=axes, shrink=0.6, label="Percentage of EOG in signal")
+    plt_show(show)
+    return fig
