@@ -3,6 +3,7 @@
 # License: BSD-3-Clause
 
 import mne
+
 from eoglearn.models import EOGDenoiser
 
 
