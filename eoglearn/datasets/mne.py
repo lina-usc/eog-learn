@@ -39,7 +39,8 @@ def read_mne_eyetracking_raw(return_events=False):
 
     logger.debug(f"## EOGLEARN: Reading data from {et_fpath} and {eeg_fpath}")
     raw_et = mne.io.read_raw_eyelink(et_fpath, create_annotations=["blinks"])
-    raw_eeg = mne.io.read_raw_egi(eeg_fpath, preload=True, verbose="warning")
+    raw_eeg = mne.io.read_raw_egi(eeg_fpath, preload=True)
+    raw_eeg.filter(1, 30)
 
     logger.debug("## EOGLEARN: Finding events from the raw objects")
     # due to a rogue one-shot event, find_events emits a warning

@@ -10,13 +10,13 @@ channels..
 
 # %%
 # Import the necessary packages
+import mne
 from eoglearn.datasets import read_mne_eyetracking_raw
 from eoglearn.models import EOGDenoiser
 
 # %%
 # Load the data
 raw = read_mne_eyetracking_raw()
-raw.load_data().filter(1, 30)
 
 # %%
 raw
@@ -25,7 +25,11 @@ raw
 # Plot the data
 raw.plot()
 
-
+# %%
+# .. warning::
+#     Currently, the :class:`~eoglearn.models.model.EOGDenoiser` expects the
+#     :class:`~mne.io.BaseRaw` instance to be bandpass filtered between 1 and 30 Hz.
+#
 # %%
 # Create the model
 eog_denoiser = EOGDenoiser(raw=raw, downsample=10)
@@ -34,10 +38,24 @@ eog_denoiser
 # %%
 # Fit the model
 # We will only use 10 epochs to speed up the example
-fitting_kwargs = dict(epochs=10, validation_split=0.2, batch_size=1, verbose=2)
-eog_denoiser.fit_model(fitting_kwargs=fitting_kwargs)
+eog_denoiser.fit_model(epochs=10)
 history = eog_denoiser.model.history
 
 # %%
 # display the training history
-history.history
+print(history.history["loss"])
+print(history.history["val_loss"])
+
+# %%
+# Plot a topomap of the predicted EOG artifact.
+# ---------------------------------------------
+# The plot below displays the predicted amount of EOG artifact for each EEG sensor.
+# The output is as we would expect, with frontal sensors containing the most EOG
+# artifact.
+montage = mne.channels.make_standard_montage("GSN-HydroCel-129")
+eog_denoiser.plot_eog_topo(montage=montage)
+
+# %%
+# .. todo::
+#    Add a plot of the predicted EOG artifact for each EEG sensor over time.
+#    Add plots of the denoised EEG data.

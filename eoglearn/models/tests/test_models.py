@@ -2,6 +2,8 @@
 #
 # License: BSD-3-Clause
 
+import mne
+
 from eoglearn.models import EOGDenoiser
 
 
@@ -30,8 +32,13 @@ def test_build_model(mne_fixture):
     assert eog_denoiser.model.layers[1].input_shape == (None, 100, 50)
 
     # test model training
-    fitting_kwargs = dict(epochs=1, validation_split=0.2, batch_size=1, verbose=2)
-    eog_denoiser.fit_model(fitting_kwargs=fitting_kwargs)
+    eog_denoiser.fit_model(epochs=3)
     history = eog_denoiser.model.history
-    # For now, just check that the final loss is somewhat reasonable
-    history.history["loss"][-1] < 0.05
+    # For now, just check that the loss isn't any higher than what we've seen so far.
+    assert history.history["loss"][-1] < 0.05
+    assert history.history["val_loss"][-1] < 0.07
+
+    # test viz
+    montage = mne.channels.make_standard_montage("GSN-HydroCel-129")
+    fig = eog_denoiser.plot_eog_topo(montage=montage, show=False)
+    del fig
