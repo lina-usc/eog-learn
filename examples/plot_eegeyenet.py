@@ -37,4 +37,4 @@ eog_denoiser.fit_model(epochs=10)  # limit to 10 epochs for speed
 # Plot A topomap of the EOG activity
 # ----------------------------------
 montage = mne.channels.make_standard_montage("GSN-HydroCel-129")
-eog_denoiser.plot_eog_topomap(montage=montage)
+eog_denoiser.plot_eog_topo(montage=montage)
