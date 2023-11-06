@@ -31,7 +31,7 @@ raw.plot()
 # Create and fit model
 # --------------------
 eog_denoiser = EOGDenoiser(raw, downsample=5)
-eog_denoiser.fit(epochs=10)  # limit to 10 epochs for speed
+eog_denoiser.fit_model(epochs=10)  # limit to 10 epochs for speed
 
 # %%
 # Plot A topomap of the EOG activity
