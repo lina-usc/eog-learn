@@ -86,11 +86,11 @@ tracker = 'https://github.com/scott-huberty/EOGLearn/issues'
 include-package-data = false
 
 [tool.setuptools.packages.find]
-include = ['meeg_eyekit*']
-exclude = ['meeg_eyekit*tests']
+include = ['eoglearn*']
+exclude = ['eoglearn*tests']
 
 # [tool.setuptools.package-data]
-# "meeg_eyekit" = ["assets/*"]
+# "eoglearn" = ["assets/*"]
 
 [tool.black]
 line-length = 88

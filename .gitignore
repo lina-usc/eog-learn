@@ -138,3 +138,9 @@ my_project_ll_config.yaml
 
 # sphinx gallery
 docs/auto_examples/
+
+
+# large source solution files that are too big for git
+*-bem.fif
+*-fwd.fif
+*-src.fif
