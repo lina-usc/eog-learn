@@ -8,13 +8,15 @@ import mne
 from mne.utils import logger
 
 
-def read_mne_eyetracking_raw(return_events=False):
+def read_mne_eyetracking_raw(return_events=False, bandpass=True):
     """Return an MNE Raw object containing the EyeLink dataset.
 
     Parameters
     ----------
     return_events : bool
         If ``True``, return the events for the eyetracking and EEG data.
+    bandpass: bool
+        If ``True``, applied a [1, 30]Hz bandpass.
 
     Returns
     -------
@@ -40,7 +42,8 @@ def read_mne_eyetracking_raw(return_events=False):
     logger.debug(f"## EOGLEARN: Reading data from {et_fpath} and {eeg_fpath}")
     raw_et = mne.io.read_raw_eyelink(et_fpath, create_annotations=["blinks"])
     raw_eeg = mne.io.read_raw_egi(eeg_fpath, preload=True)
-    raw_eeg.filter(1, 30)
+    if bandpass:
+        raw_eeg.filter(1, 30)
 
     logger.debug("## EOGLEARN: Finding events from the raw objects")
     # due to a rogue one-shot event, find_events emits a warning
@@ -64,6 +67,12 @@ def read_mne_eyetracking_raw(return_events=False):
     )
     # Add EEG channels to the eye-tracking raw object
     raw_et.add_channels([raw_eeg], force_update_info=True)
+
+    annots = mne.annotations_from_events(eeg_events, raw_et.info["sfreq"],
+                                         event_desc={2: "Flash"},
+                                         orig_time=raw_et.info["meas_date"])
+    raw_et.set_annotations(raw_et.annotations + annots)
+
     if return_events:
         return raw_et, dict(eyetrack=et_events, eeg=eeg_events)
     return raw_et
