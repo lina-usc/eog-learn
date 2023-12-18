@@ -5,6 +5,7 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
+import mne
 from mne.utils import logger
 from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.layers import LSTM
@@ -31,7 +32,8 @@ class EOGDenoiser:
         The number of units to pass into the initial LSTM layer. Defaults to 50.
     n_times : int
         The number of timepoints to pass into the LSTM model at once. Defaults to 100.
-
+    noise_picks: list | None
+        Channels that contain the noise channels.
     Attributes
     ----------
     raw : mne.io.Raw
@@ -58,6 +60,12 @@ class EOGDenoiser:
         The StandardScaler instance used to scale the eyetracking data.
     scaler_Y : sklearn.preprocessing.StandardScaler
         The StandardScaler instance used to scale the EEG data.
+    noise_picks: list
+        Channels that contain the noise channels.
+    denoised_neural : np.ndarray
+        The denoised neural data, scaled back to the original units and shape,
+        i.e. ``(n_samples, n_meeg_channels)`` of the input :class:`~mne.io.Raw`
+        object.
 
     Notes
     -----
@@ -71,6 +79,7 @@ class EOGDenoiser:
         downsample=10,
         n_units=50,
         n_times=100,
+        noise_picks=None
     ):
         self.__x = None
         self.__y = None
@@ -78,6 +87,12 @@ class EOGDenoiser:
         # MNE Raw object and preprocessing parameters
         #############################################
         self.raw = raw
+        self.__denoised_neural = None
+
+        if noise_picks is None:
+            self.noise_picks = ["eyetrack"]
+        else:
+            self.noise_picks = noise_picks
 
         self.downsample = downsample
         #############################
@@ -85,8 +100,18 @@ class EOGDenoiser:
         #############################
         self.n_units = n_units
         self.n_times = n_times
-        self.model = self.setup_model()
+        self.model = None
+        self.setup_model()
         self.train_test_split()  # i.e. self.X_train, self.Y_train
+
+    @property
+    def denoised_neural(self):
+        if self.__denoised_neural is None:
+            logger.info(
+                "Denoising neural data, saving to ``denoised_neural_`` attribute."
+            )
+            self.compute_denoised_neural()
+        return self.__denoised_neural
 
     @property
     def downsampled_sfreq(self):
@@ -101,7 +126,7 @@ class EOGDenoiser:
     def X(self):
         """Return an array of the raw eye-tracking data."""
         if self.__x is None:
-            eye_data = self.raw.get_data(picks=["eyetrack"]).T
+            eye_data = self.raw.get_data(picks=self.noise_picks).T
             if self.downsample is not None:
                 eye_data = eye_data[:: self.downsample, :]  # i.e. eye_data[::10, :]
             self.scaler_X = StandardScaler().fit(np.nan_to_num(eye_data))
@@ -112,13 +137,17 @@ class EOGDenoiser:
     def Y(self):
         """Return an array of the raw EEG data."""
         if self.__y is None:
-            eeg_data = self.raw.copy()
-            if self.downsample:
-                eeg_data.resample(self.downsampled_sfreq)
-            eeg_data = eeg_data.get_data(picks="eeg").T
+            eeg_data = self._get_y_raw().get_data(picks="eeg").T
             self.scaler_Y = StandardScaler().fit(np.nan_to_num(eeg_data))
             self.__y = self.scaler_Y.transform(np.nan_to_num(eeg_data))
         return self.__y
+
+    def _get_y_raw(self):
+        eeg_data = self.raw.copy()
+        if self.downsample:
+            eeg_data.resample(self.downsampled_sfreq)
+        eeg_data.pick("eeg")
+        return eeg_data
 
     def setup_model(self):
         """Return a model instance given a raw instance.
@@ -143,7 +172,7 @@ class EOGDenoiser:
 
         adagrad = Adagrad(learning_rate=1)
         model.compile(loss="mean_squared_error", optimizer=adagrad)
-        return model
+        self.model = model
 
     def train_test_split(self):
         """Split Eyetrack and EEG data into training and testing sets.
@@ -234,7 +263,7 @@ class EOGDenoiser:
         """
         if not len(self.X_train):
             logger.info("setting up train/test split")
-            _ = self.train_test_split()
+            self.train_test_split()
         predictions = self.predict(self.X_train)
         # reshape to back to 2D array matching the original raw data shape
         predicted_eog = predictions.reshape(
@@ -244,17 +273,8 @@ class EOGDenoiser:
         self.predicted_eog_ = self.scaler_Y.inverse_transform(predicted_eog)
         return self.predicted_eog_
 
-    def get_denoised_neural(self):
-        """Return the denoised M/EEG neural data.
-
-        Returns
-        -------
-        denoised_neural : np.ndarray
-            The denoised neural data, scaled back to the original units and shape,
-            i.e. ``(n_samples, n_meeg_channels)`` of the input :class:`~mne.io.Raw`
-            object. The denoised neural data are saved to the ``denoised_neural_``
-            attribute.
-        """
+    def compute_denoised_neural(self):
+        """Compute the denoised M/EEG neural data."""
         if not len(self.Y_train):
             logger.info("setting up train/test split")
             _ = self.train_test_split()
@@ -269,8 +289,27 @@ class EOGDenoiser:
         # scale back to original units of the Raw data
         Y_train = self.scaler_Y.inverse_transform(Y_train)
         assert Y_train.shape == predicted_eog.shape
-        self.denoised_neural_ = Y_train - predicted_eog
-        return self.denoised_neural_
+        self.__denoised_neural = Y_train - predicted_eog
+
+    def get_denoised_neural_raw(self):
+        raw_y = self._get_y_raw()
+        raw_denoised = mne.io.RawArray(self.denoised_neural.T, raw_y.info)
+        raw_denoised.set_annotations(raw_y.annotations)
+        return raw_denoised
+
+    def plot_loss(self):
+        """Plot the training and validation loss.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            The resulting figure showing the loss functions.
+        """
+        fig, ax = plt.subplots(constrained_layout=True)
+        for key in ["loss", "val_loss"]:
+            if key in self.model.history.history:
+                ax.plot(self.model.history.history[key], label=key)
+        return fig
 
     def plot_eog_topo(self, montage, show=True):
         """Plot the topography of the eyetracking data.
@@ -290,12 +329,7 @@ class EOGDenoiser:
         fig : matplotlib.figure.Figure
             The resulting figure object for the topomap plot.
         """
-        if not hasattr(self, "denoised_neural_"):
-            logger.info(
-                "Denoising neural data, saving to ``denoised_neural_`` attribute."
-            )
-            _ = self.get_denoised_neural()
-        squared_errors = np.square(self.denoised_neural_)
+        squared_errors = np.square(self.denoised_neural)
         mean_squared_erros = np.mean(squared_errors, axis=0)
         noise = np.sqrt(mean_squared_erros)
         # reshape to back to 2D array matching the original raw data shape
