@@ -4,8 +4,8 @@
 # License: BSD-3-Clause
 
 import matplotlib.pyplot as plt
-import numpy as np
 import mne
+import numpy as np
 from mne.utils import logger
 from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.layers import LSTM
@@ -34,6 +34,7 @@ class EOGDenoiser:
         The number of timepoints to pass into the LSTM model at once. Defaults to 100.
     noise_picks: list | None
         Channels that contain the noise channels.
+
     Attributes
     ----------
     raw : mne.io.Raw
@@ -73,14 +74,7 @@ class EOGDenoiser:
     on how to create a raw object with both EEG and eyetracking channels.
     """
 
-    def __init__(
-        self,
-        raw,
-        downsample=10,
-        n_units=50,
-        n_times=100,
-        noise_picks=None
-    ):
+    def __init__(self, raw, downsample=10, n_units=50, n_times=100, noise_picks=None):
         self.__x = None
         self.__y = None
         #############################################
@@ -106,6 +100,7 @@ class EOGDenoiser:
 
     @property
     def denoised_neural(self):
+        """Return the MEEG signal without EOG artifact."""
         if self.__denoised_neural is None:
             logger.info(
                 "Denoising neural data, saving to ``denoised_neural_`` attribute."
@@ -292,6 +287,7 @@ class EOGDenoiser:
         self.__denoised_neural = Y_train - predicted_eog
 
     def get_denoised_neural_raw(self):
+        """Return an mne.io.Raw object of the MEEG signal without EOG artifact."""
         raw_y = self._get_y_raw()
         raw_denoised = mne.io.RawArray(self.denoised_neural.T, raw_y.info)
         raw_denoised.set_annotations(raw_y.annotations)
