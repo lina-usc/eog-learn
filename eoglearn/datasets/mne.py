@@ -68,9 +68,12 @@ def read_mne_eyetracking_raw(return_events=False, bandpass=True):
     # Add EEG channels to the eye-tracking raw object
     raw_et.add_channels([raw_eeg], force_update_info=True)
 
-    annots = mne.annotations_from_events(eeg_events, raw_et.info["sfreq"],
-                                         event_desc={2: "Flash"},
-                                         orig_time=raw_et.info["meas_date"])
+    annots = mne.annotations_from_events(
+        et_events,
+        raw_et.info["sfreq"],
+        event_desc={2: "Flash"},
+        orig_time=raw_et.info["meas_date"],
+    )
     raw_et.set_annotations(raw_et.annotations + annots)
 
     if return_events:
