@@ -93,5 +93,5 @@ def plot_values_topomap(
 
     if colorbar:
         fig.colorbar(im[0], ax=axes, shrink=0.6, label="Percentage of EOG in signal")
-    plt_show(show)
+    plt_show(show, fig)
     return fig
