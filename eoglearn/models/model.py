@@ -6,6 +6,7 @@
 import matplotlib.pyplot as plt
 import mne
 import numpy as np
+import mne
 from mne.utils import logger
 from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.layers import LSTM
@@ -18,60 +19,63 @@ from eoglearn.viz import plot_values_topomap
 class EOGDenoiser:
     """Use simultaneous EEG and Eyetracking to Denoise EOG from the EEG data.
 
-    Parameters
-    ----------
-    raw : mne.io.Raw
-        An instance of ``mne.io.Raw``, with EEG, eyegaze, and pupil channels.
-    downsample : int
-        The factor by which to downsample the EEG and eyetracking data. EEG channels
-        will be low-pass filtered before downsampling using ``mne.io.filter.resample``.
-        Eyetracking channels will be decimated without any filtering. resampling and
-        decimating will be done on copies of the data, so the original input data will
-        be preserved.
-    n_units : int
-        The number of units to pass into the initial LSTM layer. Defaults to 50.
-    n_times : int
-        The number of timepoints to pass into the LSTM model at once. Defaults to 100.
-    noise_picks: list | None
-        Channels that contain the noise channels.
+        Parameters
+        ----------
+        raw : mne.io.Raw
+            An instance of ``mne.io.Raw``, with EEG, eyegaze, and pupil channels.
+        downsample : int
+            The factor by which to downsample the EEG and eyetracking data. EEG channels
+            will be low-pass filtered before downsampling using ``mne.io.filter.resample``.
+            Eyetracking channels will be decimated without any filtering. resampling and
+            decimating will be done on copies of the data, so the original input data will
+            be preserved.
+        n_units : int
+            The number of units to pass into the initial LSTM layer. Defaults to 50.
+        n_times : int
+            The number of timepoints to pass into the LSTM model at once. Defaults to 100.
+        noise_picks: list | None
+            Channels that contain the noise channels.
+    <<<<<<< HEAD
 
-    Attributes
-    ----------
-    raw : mne.io.Raw
-        The original input ``mne.io.Raw`` instance.
-    downsample : int
-        The factor by which the data was downsampled.
-    n_units : int
-        The number of units in the initial LSTM layer.
-    n_times : int
-        The number of timepoints passed into the LSTM model at once.
-    model : eoglearn.model.Model
-        The Keras LSTM model instance.
-    X : np.ndarray
-        The raw eyetracking data.
-    Y : np.ndarray
-        The raw EEG data.
-    X_train : np.ndarray
-        The eyetracking data (``X``)reshaped to fit into the LSTM model.
-    Y_train : np.ndarray
-        The EEG data (``Y``) reshaped to fit into the LSTM model.
-    downsampled_sfreq : float
-        The sampling frequency after downsampling.
-    scaler_X : sklearn.preprocessing.StandardScaler
-        The StandardScaler instance used to scale the eyetracking data.
-    scaler_Y : sklearn.preprocessing.StandardScaler
-        The StandardScaler instance used to scale the EEG data.
-    noise_picks: list
-        Channels that contain the noise channels.
-    denoised_neural : np.ndarray
-        The denoised neural data, scaled back to the original units and shape,
-        i.e. ``(n_samples, n_meeg_channels)`` of the input :class:`~mne.io.Raw`
-        object.
+    =======
+    >>>>>>> lina/main
+        Attributes
+        ----------
+        raw : mne.io.Raw
+            The original input ``mne.io.Raw`` instance.
+        downsample : int
+            The factor by which the data was downsampled.
+        n_units : int
+            The number of units in the initial LSTM layer.
+        n_times : int
+            The number of timepoints passed into the LSTM model at once.
+        model : eoglearn.model.Model
+            The Keras LSTM model instance.
+        X : np.ndarray
+            The raw eyetracking data.
+        Y : np.ndarray
+            The raw EEG data.
+        X_train : np.ndarray
+            The eyetracking data (``X``)reshaped to fit into the LSTM model.
+        Y_train : np.ndarray
+            The EEG data (``Y``) reshaped to fit into the LSTM model.
+        downsampled_sfreq : float
+            The sampling frequency after downsampling.
+        scaler_X : sklearn.preprocessing.StandardScaler
+            The StandardScaler instance used to scale the eyetracking data.
+        scaler_Y : sklearn.preprocessing.StandardScaler
+            The StandardScaler instance used to scale the EEG data.
+        noise_picks: list
+            Channels that contain the noise channels.
+        denoised_neural : np.ndarray
+            The denoised neural data, scaled back to the original units and shape,
+            i.e. ``(n_samples, n_meeg_channels)`` of the input :class:`~mne.io.Raw`
+            object.
 
-    Notes
-    -----
-    See the MNE-Python tutorial on aligning EEG and eyetracking data for information
-    on how to create a raw object with both EEG and eyetracking channels.
+        Notes
+        -----
+        See the MNE-Python tutorial on aligning EEG and eyetracking data for information
+        on how to create a raw object with both EEG and eyetracking channels.
     """
 
     def __init__(self, raw, downsample=10, n_units=50, n_times=100, noise_picks=None):
