@@ -1,6 +1,7 @@
 from importlib import import_module
 
 import mne
+import numpy as np
 
 
 def _check_pymatreader_installed():
@@ -78,4 +79,81 @@ def read_raw_eegeyenet(fname):
             ch_dict["loc"][4] = -1
         elif ch_dict["ch_name"].upper().endswith("Y"):
             ch_dict["loc"][4] = 1
+
+    # read the events (dot onsets, blinks etc)
+    eye_chs = [
+        name
+        for name, ch in zip(raw.ch_names, raw.get_channel_types())
+        if ch in ["eyegaze", "pupil"]
+    ]
+    for onset, duration, description in zip(
+        mat_content["event"]["latency"],
+        mat_content["event"]["duration"],
+        mat_content["event"]["type"],
+    ):
+        onset /= mat_content["srate"]
+        duration /= mat_content["srate"]
+        description = description.strip()  # remove trailing whitespace from numbers
+
+        if description in ["55", "56"]:
+            continue  # We dont know what these are. probably some start cue
+        if description.startswith(("L_", "R_")):
+            # remove the L_ or R_ prefix, will put eye info in ch_names key of annot
+            eye = [eye_chs]
+            description = description.lstrip("LR_")
+            if "blink" in description.lower():
+                description = "BAD_" + description
+        else:  # cue or end_cue
+            eye = None
+            if description == "41":
+                description = "end_cue"
+            # cue 1 is the same position as cue 101, so make them the same name
+            elif int(description) >= 100:
+                description = str(int(description) - 100)
+        raw.annotations.append(onset, duration, description, ch_names=eye)
     return raw
+
+
+def get_dot_positions():
+    """Get the x/y pixel coordinates of the dots in the EEGEyeNet dots dataset.
+
+    Returns
+    -------
+    tar_pos_dict : dict
+        dictionary where the keys are the event triggers
+        (``'1'``, ``'2'``, ..., ``'27'``), and the values are arrays of shape ``(2,)``,
+        indicating the x/y positions of the dot shown on the screen.
+    """
+    CUE_TRIGGER = list(map(str, range(1, 28)))
+    TAR_POS = np.array(
+        [
+            [400, 300],
+            [650, 500],
+            [400, 100],
+            [100, 450],
+            [700, 450],
+            [100, 500],
+            [200, 350],
+            [300, 400],
+            [100, 150],
+            [150, 500],
+            [150, 100],
+            [700, 100],
+            [300, 200],
+            [100, 100],
+            [700, 500],
+            [500, 400],
+            [600, 250],
+            [650, 100],
+            [400, 300],
+            [200, 250],
+            [400, 500],
+            [700, 150],
+            [500, 200],
+            [100, 300],
+            [700, 300],
+            [600, 350],
+            [400, 300],
+        ]
+    )
+    return dict(zip(CUE_TRIGGER, TAR_POS))

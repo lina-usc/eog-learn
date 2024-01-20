@@ -57,7 +57,7 @@ doc = [
     'sphinx-issues',
 ]
 
-extras = ['pymatreader', 'pandas']
+extras = ['pymatreader', 'pandas', 'defusedxml']
 
 test = [
     'black',
@@ -72,6 +72,7 @@ all = [
     'eoglearn[gpu]',
     'eoglearn[doc]',
     'eoglearn[test]',
+    'eoglearn[extras]',
 ]
 full = [
     'eoglearn[all]',
