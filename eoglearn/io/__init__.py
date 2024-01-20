@@ -1,1 +1,1 @@
-from .eegeyenet import read_raw_eegeyenet
+from .eegeyenet import read_raw_eegeyenet, get_dot_positions
