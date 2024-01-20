@@ -1,9 +1,7 @@
 from importlib import import_module
 
-import numpy as np
-
 import mne
-from mne._fiff.constants import FIFF
+import numpy as np
 
 
 def _check_pymatreader_installed():

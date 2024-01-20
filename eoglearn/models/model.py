@@ -6,7 +6,6 @@
 import matplotlib.pyplot as plt
 import mne
 import numpy as np
-import mne
 from mne.utils import logger
 from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.layers import LSTM
@@ -19,28 +18,26 @@ from eoglearn.viz import plot_values_topomap
 class EOGDenoiser:
     """Use simultaneous EEG and Eyetracking to Denoise EOG from the EEG data.
 
-        Parameters
-        ----------
+    Parameters
+    ----------
         raw : mne.io.Raw
             An instance of ``mne.io.Raw``, with EEG, eyegaze, and pupil channels.
         downsample : int
             The factor by which to downsample the EEG and eyetracking data. EEG channels
-            will be low-pass filtered before downsampling using ``mne.io.filter.resample``.
-            Eyetracking channels will be decimated without any filtering. resampling and
-            decimating will be done on copies of the data, so the original input data will
-            be preserved.
+            will be low-pass filtered before downsampling using
+            ``mne.io.filter.resample``. Eyetracking channels will be decimated without
+            any filtering. resampling and decimating will be done on copies of the data,
+            so the original input data will be preserved.
         n_units : int
             The number of units to pass into the initial LSTM layer. Defaults to 50.
         n_times : int
-            The number of timepoints to pass into the LSTM model at once. Defaults to 100.
+            The number of timepoints to pass into the LSTM model at once. Defaults to
+            100.
         noise_picks: list | None
             Channels that contain the noise channels.
-    <<<<<<< HEAD
 
-    =======
-    >>>>>>> lina/main
-        Attributes
-        ----------
+    Attributes
+    ----------
         raw : mne.io.Raw
             The original input ``mne.io.Raw`` instance.
         downsample : int
@@ -72,8 +69,8 @@ class EOGDenoiser:
             i.e. ``(n_samples, n_meeg_channels)`` of the input :class:`~mne.io.Raw`
             object.
 
-        Notes
-        -----
+    Notes
+    -----
         See the MNE-Python tutorial on aligning EEG and eyetracking data for information
         on how to create a raw object with both EEG and eyetracking channels.
     """

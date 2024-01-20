@@ -1,4 +1,3 @@
-import numpy as np
 
 from mne._fiff.constants import FIFF
 
