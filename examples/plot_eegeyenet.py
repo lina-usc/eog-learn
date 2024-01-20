@@ -70,6 +70,7 @@ fig.show()
 # %%
 # Plot a gaze heatmap
 # -------------------
+#
 # Let's plot a heatmap of the subject's gaze over the course of the task,
 # to see if they were looking at the dots.
 
