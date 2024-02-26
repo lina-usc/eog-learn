@@ -1,4 +1,4 @@
-import mne
+from .utils import _fetch_dataset
 
 PARAMS = {
     "EP10_DOTS": list(
@@ -15,10 +15,6 @@ PARAMS = {
 }
 
 DOTS = {"EP10": PARAMS["EP10_DOTS"]}
-
-
-def _fetch_dataset(fetch_dataset_kwargs):
-    return mne.datasets.fetch_dataset(**fetch_dataset_kwargs)
 
 
 def fetch_eegeyenet(subject="EP10", run=0, fetch_dataset_kwargs=None):
