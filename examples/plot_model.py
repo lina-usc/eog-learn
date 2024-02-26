@@ -23,6 +23,12 @@ raw = read_mne_eyetracking_raw()
 raw
 
 # %%
+# .. note::
+#     If you want eye tracking data in head-referenced-eye-angle (HREF) units, you can
+#     pass ``eyetrack_unit="href"`` to
+#     :func:`~eoglearn.datasets.read_mne_eyetracking_raw`.
+
+# %%
 # Plot the data
 raw.plot()
 
