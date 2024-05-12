@@ -19,7 +19,5 @@ def test_read_mne_eyetracking_raw(unit):
 def test_fetch_eegeyenet():
     """Test downloading eegeyenet data."""
     fetch_dataset_kwargs = dict(force_update=True)
-    fpath = fetch_eegeyenet(fetch_dataset_kwargs=fetch_dataset_kwargs)
-    assert fpath.exists()
-    fname = fpath / "EP10_DOTS1_EEG.mat"
+    fname = fetch_eegeyenet(fetch_dataset_kwargs=fetch_dataset_kwargs)
     assert fname.exists()
