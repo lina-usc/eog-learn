@@ -20,8 +20,7 @@ from mne.viz.eyetracking import plot_gaze
 
 
 fpath = eoglearn.datasets.fetch_eegeyenet()
-fname = fpath / "EP10_DOTS1_EEG.mat"
-raw = eoglearn.io.read_raw_eegeyenet(fname)
+raw = eoglearn.io.read_raw_eegeyenet(fpath)
 raw
 
 # %%
