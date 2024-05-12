@@ -38,7 +38,7 @@ classifiers = [
 dependencies = [
     'mne >= 1.5',
     'scikit-learn >= 1.0',
-    'tensorflow-cpu',
+    'tensorflow-cpu; platform_system != "Darwin"',
 ]
 
 [project.optional-dependencies]
