@@ -166,7 +166,7 @@ class EOGDenoiser:
         )
         model.add(LSTM(self.Y.shape[1], dropout=0.5, return_sequences=True))
 
-        adagrad = Adagrad(learning_rate=1)
+        adagrad = Adagrad(learning_rate=1.)
         model.compile(loss="mean_squared_error", optimizer=adagrad)
         self.model = model
 
