@@ -84,7 +84,7 @@ tracker = 'https://github.com/scott-huberty/EOGLearn/issues'
 # documentation = 'https://github.com/scott-huberty/EOGLearn/'
 
 [tool.setuptools]
-include-package-data = True
+include-package-data = true
 
 [tool.setuptools.packages.find]
 include = ['eoglearn*']
