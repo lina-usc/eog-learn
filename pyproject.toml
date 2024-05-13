@@ -1,5 +1,5 @@
 [build-system]
-requires = ['setuptools >= 61.0.0']
+requires = ['setuptools >= 61.0.0', "setuptools-scm>=8.0"]
 build-backend = 'setuptools.build_meta'
 
 [project]
@@ -84,14 +84,11 @@ tracker = 'https://github.com/scott-huberty/EOGLearn/issues'
 # documentation = 'https://github.com/scott-huberty/EOGLearn/'
 
 [tool.setuptools]
-include-package-data = false
+include-package-data = true
 
 [tool.setuptools.packages.find]
 include = ['eoglearn*']
 exclude = ['eoglearn*tests']
-
-# [tool.setuptools.package-data]
-# "eoglearn" = ["assets/*"]
 
 [tool.black]
 line-length = 88
