@@ -90,9 +90,6 @@ include-package-data = true
 include = ['eoglearn*']
 exclude = ['eoglearn*tests']
 
-# [tool.setuptools.package-data]
-# "eoglearn" = ["assets/*", "datasets/eegeyenet_urls.csv"]
-
 [tool.black]
 line-length = 88
 target-version = ['py39']
