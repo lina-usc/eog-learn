@@ -1,5 +1,5 @@
 [build-system]
-requires = ['setuptools >= 61.0.0']
+requires = ['setuptools >= 61.0.0', "setuptools-scm>=8.0"]
 build-backend = 'setuptools.build_meta'
 
 [project]
@@ -91,7 +91,7 @@ include = ['eoglearn*']
 exclude = ['eoglearn*tests']
 
 # [tool.setuptools.package-data]
-# "eoglearn" = ["assets/*"]
+# "eoglearn" = ["assets/*", "datasets/eegeyenet_urls.csv"]
 
 [tool.black]
 line-length = 88
