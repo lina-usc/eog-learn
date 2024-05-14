@@ -1,6 +1,7 @@
 #!/work/co20/eog_lstm/venv_lstm/bin/python
 
 import sys
+import multiprocessing
 
 # Scientific Stack
 import numpy as np
@@ -151,15 +152,16 @@ def clean_data(subject, run, tmax=None):
 
 if __name__ == "__main__":
 
-    no = int(sys.argv[1])
-
     runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
     subject_run = np.concatenate([[(subject, run) for run in runs_dict[subject]]
                                 for subject in runs_dict])
 
     tmax = None
-    subject, run = subject_run[no]
-    raw, raw_clean, raw_noise = clean_data(subject=subject, run=run, tmax=tmax)
-    raw.export(f"{subject}_{run}_original.edf")
-    raw_clean.export(f"{subject}_{run}_clean.edf")
-    raw_noise.export(f"{subject}_{run}_noise.edf")
+    def process(subject, run):
+      raw, raw_clean, raw_noise = clean_data(subject=subject, run=run, tmax=tmax)
+      raw.export(f"{subject}_{run}_original.edf")
+      raw_clean.export(f"{subject}_{run}_clean.edf")
+      raw_noise.export(f"{subject}_{run}_noise.edf")
+      
+    p = multiprocessing.Pool(85)
+    p.map(process, subject_run)
