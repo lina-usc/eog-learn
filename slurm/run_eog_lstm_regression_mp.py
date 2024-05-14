@@ -132,7 +132,7 @@ def format_data_for_ml(raw, tmax):
 
 def clean_data(subject, run, tmax=None):
 
-  raw = prep_data(subject="EP10", run=1)
+  raw = prep_data(subject=subject, run=run)
 
   if tmax is None:
     tmax = int(raw.times[-1])
@@ -161,7 +161,7 @@ def process(*args, tmax=None):
 
 if __name__ == "__main__":
 
-    nb_processes = 45
+    nb_processes = 5 #45
 
     runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
     subject_run = np.concatenate([[(subject, run) for run in runs_dict[subject]]
