@@ -150,18 +150,25 @@ def clean_data(subject, run, tmax=None):
   return raw, raw_clean, raw_noise
 
 
+
+def process(*args, tmax=None):
+    subject, run = args[0]
+    raw, raw_clean, raw_noise = clean_data(subject=subject, run=run, tmax=tmax)
+    raw.export(f"{subject}_{run}_original.edf")
+    raw_clean.export(f"{subject}_{run}_clean.edf")
+    raw_noise.export(f"{subject}_{run}_noise.edf")
+
+
 if __name__ == "__main__":
+
+    nb_processes = 45
 
     runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
     subject_run = np.concatenate([[(subject, run) for run in runs_dict[subject]]
                                 for subject in runs_dict])
 
-    tmax = None
-    def process(subject, run):
-      raw, raw_clean, raw_noise = clean_data(subject=subject, run=run, tmax=tmax)
-      raw.export(f"{subject}_{run}_original.edf")
-      raw_clean.export(f"{subject}_{run}_clean.edf")
-      raw_noise.export(f"{subject}_{run}_noise.edf")
-      
-    p = multiprocessing.Pool(85)
+    p = multiprocessing.Pool(nb_processes)
     p.map(process, subject_run)
+
+
+
