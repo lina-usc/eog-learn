@@ -19,7 +19,8 @@ import eoglearn  # This is my package for this project
 
 
 class EOGRegressor(nn.Module):
-    def __init__(self, n_input_features, n_output_features, hidden_size=64, num_layers=1, dropout=0.5):
+    def __init__(self, n_input_features, n_output_features,
+                 hidden_size=64, num_layers=1, dropout=0.5):
         super(EOGRegressor, self).__init__()
         self.input_size = n_input_features
         self.hidden_size = hidden_size
@@ -58,7 +59,8 @@ def train_the_model(X, Y, num_epochs=1000, hidden_size=64, num_layers=1, dropout
     else:
         raise ValueError("Input data must have 3 dimensions: (batch_size, seq_len, input_size)")
 
-    model = EOGRegressor(input_features, output_features, hidden_size=hidden_size, num_layers=num_layers, dropout=dropout)
+    model = EOGRegressor(input_features, output_features, hidden_size=hidden_size,
+                         num_layers=num_layers, dropout=dropout)
 
     # Loss function (Mean Squared Error)
     criterion = nn.MSELoss()
@@ -88,70 +90,79 @@ def train_the_model(X, Y, num_epochs=1000, hidden_size=64, num_layers=1, dropout
 
     # Set model to eval mode to turn off dropout
     model.eval()
+    return model, losses
+
+
+def eval_model(model, X, Y):
     with torch.no_grad():
         predicted_noise = model(X)
         denoised_output = (Y - predicted_noise).numpy()
 
-    return losses, predicted_noise, denoised_output
+    return predicted_noise, denoised_output
 
 
 def prep_data(subject="EP10", run=1):
-  fpath = eoglearn.datasets.fetch_eegeyenet(subject=subject, run=run)
-  raw = eoglearn.io.read_raw_eegeyenet(fpath)
+    fpath = eoglearn.datasets.fetch_eegeyenet(subject=subject, run=run)
+    raw = eoglearn.io.read_raw_eegeyenet(fpath)
 
-  raw.set_montage("GSN-HydroCel-129")
-  raw.filter(1, 30, picks="eeg").resample(100)  # DO NOT filter eyetrack channels
-  raw.set_eeg_reference("average")
-  return raw
+    raw.set_montage("GSN-HydroCel-129")
+    raw.filter(1, 30, picks="eeg").resample(100)  # DO NOT filter eyetrack channels
+    raw.set_eeg_reference("average")
+    return raw
 
 
 def format_data_for_ml(raw, tmax):
-  # normalize the dataset
-  X = raw.get_data(picks=["eyetrack"]).T #[::5] # decimate the eyetracking data
+    # normalize the dataset
+    X = raw.get_data(picks=["eyetrack"]).T #[::5] # decimate the eyetracking data
 
-  Y = raw.get_data(picks="eeg").T
+    Y = raw.get_data(picks="eeg").T
 
-  scaler = StandardScaler()
-  X = scaler.fit_transform(X)
-  # For Y we need to split the fit and transform into 2 steps
-  # Because we will need to inverse transform the model output later during evaluation
-  scaler = StandardScaler()
-  scaler_y = scaler.fit(Y)
-  Y = scaler_y.transform(Y)
+    scaler = StandardScaler()
+    X = scaler.fit_transform(X)
+    # For Y we need to split the fit and transform into 2 steps
+    # Because we will need to inverse transform the model output later during evaluation
+    scaler = StandardScaler()
+    scaler_y = scaler.fit(Y)
+    Y = scaler_y.transform(Y)
 
-  # 1s epochs
-  X = X.reshape(tmax, int(raw.info["sfreq"]), 3)
-  Y = Y.reshape(tmax, int(raw.info["sfreq"]), 129)
+    # 1s epochs
+    X = X.reshape(tmax, int(raw.info["sfreq"]), 3)
+    Y = Y.reshape(tmax, int(raw.info["sfreq"]), 129)
 
-  # Convert data to tensors
-  X_tensor = torch.from_numpy(X).float()
-  Y_tensor = torch.from_numpy(Y).float()
+    # Convert data to tensors
+    X_tensor = torch.from_numpy(X).float()
+    Y_tensor = torch.from_numpy(Y).float()
 
-  return X_tensor, Y_tensor, scaler_y
+    return X_tensor, Y_tensor, scaler_y
 
 
 def clean_data(subject, run, tmax=None):
 
-  raw = prep_data(subject=subject, run=run)
+    raw = prep_data(subject=subject, run=run)
 
-  if tmax is None:
+    raw_train = raw.copy()
+    if tmax is None:
+        tmax = int(raw.times[-1])
+    raw_train.crop(tmax=tmax, include_tmax=False)
+
+    X_tensor, Y_tensor, scaler_y = format_data_for_ml(raw_train, tmax)
+    model, losses = train_the_model(X_tensor, Y_tensor, dropout=.5, num_layers=2)
+
     tmax = int(raw.times[-1])
-  raw.crop(tmax=tmax, include_tmax=False)
+    raw.crop(tmax=tmax, include_tmax=False)
+    X_tensor, Y_tensor, scaler_y = format_data_for_ml(raw, tmax)
+    predicted_noise, denoised_output = eval_model(model, X_tensor, Y_tensor)
 
-  X_tensor, Y_tensor, scaler_y = format_data_for_ml(raw, tmax)
-  losses, predicted_noise, denoised_output = train_the_model(X_tensor, Y_tensor, dropout=.5, num_layers=2)
+    # Reshape back to 2D and inverse transform to original units (Volts)
+    predicted_noise = scaler_y.inverse_transform(predicted_noise.reshape(tmax*int(raw.info['sfreq']), 129)).T
+    denoised_output = scaler_y.inverse_transform(denoised_output.reshape(tmax*int(raw.info['sfreq']), 129)).T
 
-  # Reshape back to 2D and inverse transform to original units (Volts)
-  predicted_noise = scaler_y.inverse_transform(predicted_noise.reshape(tmax*int(raw.info['sfreq']), 129)).T
-  denoised_output = scaler_y.inverse_transform(denoised_output.reshape(tmax*int(raw.info['sfreq']), 129)).T
-
-  raw_clean = mne.io.RawArray(denoised_output, raw.copy().pick("eeg").info)
-  raw_noise = mne.io.RawArray(predicted_noise, raw.copy().pick("eeg").info)
-  return raw, raw_clean, raw_noise
-
+    raw_clean = mne.io.RawArray(denoised_output, raw.copy().pick("eeg").info)
+    raw_noise = mne.io.RawArray(predicted_noise, raw.copy().pick("eeg").info)
+    return raw, raw_clean, raw_noise
 
 
-def process(*args, tmax=None):
+def process(*args, tmax=300):
     subject, run = args[0]
     raw, raw_clean, raw_noise = clean_data(subject=subject, run=run, tmax=tmax)
     raw.export(f"{subject}_{run}_original.edf")
@@ -161,14 +172,11 @@ def process(*args, tmax=None):
 
 if __name__ == "__main__":
 
-    nb_processes = 5 #45
+    nb_processes = 45
 
     runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
     subject_run = np.concatenate([[(subject, run) for run in runs_dict[subject]]
-                                for subject in runs_dict])
+                                  for subject in runs_dict])
 
     p = multiprocessing.Pool(nb_processes)
     p.map(process, subject_run)
-
-
-
