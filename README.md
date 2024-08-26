@@ -6,7 +6,7 @@ This package contains tools for denoising EOG artifact using simultaneously coll
 Problem Statement
 =================
 
-MEG and EEG data contain a mixture of neural signal and non-neural artifact (for example muscle movment, heartbeat, eye blinks, and eye saccades). Eye blinks and eye saccades (ocular artifacts) are always present in M/EEG and have large amplitude as compared to neural signal. M/EEG devices record electrical signals in the brain - interestingly, an electrical dipole exists in the human eye, and thus this is inadverdently picked up by the M/EEG when we move our eyes etc. Currently, most MEEG analyses use ICA (blind source separation) to "subtract" the ocular artifact from the MEEG signal. This has the benefit of retaining the full M/EEG time-course (ie. before the days of ICA, scientists would cut out entire segments of M/EEG with ocular artifact in them, resulting in a loss of data). However, ICA is an unsupervised method, it attempts to identify "patterns" in the data. Usually, it will identify the ocular artifact patttern in M/EEG, however this is not a perfect approach, and it is not known how much neural signal is lost when subtracting out the ocular ICA components. Further, ICA assumes that all sources in the data are independent. This is not always the case for M/EEG data, raising the question of whether the approach is valid for M/EEG.
+MEG and EEG data contain a mixture of neural signal and non-neural artifact (for example muscle movment, heartbeat, eye blinks, and eye saccades). Eye blinks and eye saccades (ocular artifacts) are always present in M/EEG and have large amplitude as compared to neural signal. M/EEG devices record electrical signals in the brain - interestingly, an electrical dipole exists in the human eye, and thus this is inadverdently picked up by the M/EEG when we move our eyes etc. Currently, most MEEG analyses use ICA (blind source separation) to "subtract" the ocular artifact from the MEEG signal. However, since ICA is an unsupervised method, it is not a perfect approach, and it is easy to know how much neural signal is removed when subtracting out ICA components.
 
 Aims
 ====
@@ -27,9 +27,9 @@ The image below assumes 5 eye-tracking channels as input and 129 EEG channels as
 Road Map
 ========
 
-- [ ] **Proof-of-concept**: Demonstrate the ability to use ML with simultaneously collected M/EEG-Eyetracking data to denoise EOG artifact from the M/EEG data, using one or two files.
-- [ ]  **Train Model with open-access data**: after a proof-of-concept has been demonstrated, it should be applied to 1 or more open-access datasets for hyper-parameter training and model compiling. The [EEGEyeNet dataset](https://osf.io/ktv7m/) is a strong candidate for this step.
-- [ ]  **Compare with current state-of-the-art tools**. Compare M/EEG data cleaned with this tool to the same data cleaned with ICA and the ICLabel classifier, which uses Deep 
+- [x] **Proof-of-concept**: Demonstrate the ability to use ML with simultaneously collected M/EEG-Eyetracking data to denoise EOG artifact from the M/EEG data, using one or two files.
+- [x]  **Train Model with open-access data**: after a proof-of-concept has been demonstrated, it should be applied to 1 or more open-access datasets for hyper-parameter training and model compiling. The [EEGEyeNet dataset](https://osf.io/ktv7m/) is a strong candidate for this step.
+- [x]  **Compare with current state-of-the-art tools**. Compare M/EEG data cleaned with this tool to the same data cleaned with ICA and the ICLabel classifier, which uses Deep 
        Learning to classify ICA components as EOG, Muscle, Brain, etc. Metrics for comparing the output of these two approahces TBD.
 
 
