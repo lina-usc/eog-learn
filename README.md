@@ -27,6 +27,9 @@ The image below assumes 5 eye-tracking channels as input and 129 EEG channels as
 Road Map
 ========
 
+Read the current iteration of the [paper](https://www.biorxiv.org/content/10.1101/2024.05.24.595839v1).
+
+
 - [x] **Proof-of-concept**: Demonstrate the ability to use ML with simultaneously collected M/EEG-Eyetracking data to denoise EOG artifact from the M/EEG data, using one or two files.
 - [x]  **Train Model with open-access data**: after a proof-of-concept has been demonstrated, it should be applied to 1 or more open-access datasets for hyper-parameter training and model compiling. The [EEGEyeNet dataset](https://osf.io/ktv7m/) is a strong candidate for this step.
 - [x]  **Compare with current state-of-the-art tools**. Compare M/EEG data cleaned with this tool to the same data cleaned with ICA and the ICLabel classifier, which uses Deep 
