@@ -167,21 +167,22 @@ def process(*args, tmax=None):
     try:
         subject, run = args[0]
         raw, raw_clean, raw_noise = clean_data(subject=subject, run=run, tmax=tmax)
-        raw.export(root + f"{subject}_{run}_original.edf")
-        raw_clean.export(root + f"{subject}_{run}_clean.edf")
-        raw_noise.export(root + f"{subject}_{run}_noise.edf")
+        raw.export(root / f"{subject}_{run}_original.edf")
+        raw_clean.export(root / f"{subject}_{run}_clean.edf")
+        raw_noise.export(root / f"{subject}_{run}_noise.edf")
     except:
         pass
 
 
 #root = "processed/"
-root = ""
+root = Path(__file__).parent.parent / "data" / "paper" / "processed"
 
 
 if __name__ == "__main__":
 
     nb_processes = 5
-    Path(root).mkdir(exist_ok=True)
+    if not root.exists():
+        root.mkdir()
 
     runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
     subject_run = np.concatenate([[(subject, run) 
@@ -189,7 +190,7 @@ if __name__ == "__main__":
                                   for subject in runs_dict])
     subject_run = [(subject, run) 
                    for subject, run in subject_run 
-                   if not Path(root + f"{subject}_{run}_noise.edf").exists()]
+                   if not (root / f"{subject}_{run}_noise.edf").exists()]
 
     p = multiprocessing.Pool(nb_processes)
     p.map(process, subject_run)
