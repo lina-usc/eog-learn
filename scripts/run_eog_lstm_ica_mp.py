@@ -35,18 +35,18 @@ def process(*args, tmax=None):
         # Now apply the ICA to raw, lowpass to 30Hz to match our DL Raw, and plot.
         ica.apply(raw_ica, exclude=exclude_idx)
         raw_ica.filter(1, 30).resample(100)
-        raw_ica.export(root + f"{subject}_{run}_ica.edf")
+        raw_ica.export(root / f"{subject}_{run}_ica.edf")
     except:
         pass
 
 
-root = "processed/"
-root = ""
+root = Path(__file__).parent.parent / "data" / "paper" / "processed"
 
 if __name__ == "__main__":
 
     nb_processes = 5
-    Path("processed").mkdir(exist_ok=True)
+    if not root.exists():
+        root.mkdir()
 
     runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
     subject_run = np.concatenate([[(subject, run) 
@@ -54,7 +54,7 @@ if __name__ == "__main__":
                                   for subject in runs_dict])
     subject_run = [(subject, run) 
                    for subject, run in subject_run 
-                   if not Path(root + f"{subject}_{run}_ica.edf").exists()]
+                   if not (root / f"{subject}_{run}_ica.edf").exists()]
 
     p = multiprocessing.Pool(nb_processes)
     p.map(process, subject_run)

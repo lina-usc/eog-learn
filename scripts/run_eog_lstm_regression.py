@@ -1,5 +1,6 @@
 #!/work/co20/eog_lstm/venv_lstm/bin/python
 
+from pathlib import Path
 import sys
 
 # Scientific Stack
@@ -160,6 +161,7 @@ if __name__ == "__main__":
     tmax = None
     subject, run = subject_run[no]
     raw, raw_clean, raw_noise = clean_data(subject=subject, run=run, tmax=tmax)
-    raw.export(f"{subject}_{run}_original.edf")
-    raw_clean.export(f"{subject}_{run}_clean.edf")
-    raw_noise.export(f"{subject}_{run}_noise.edf")
+    data_dir = Path(__file__).parent.parent / "data" / "paper"
+    raw.export(data_dir / f"{subject}_{run}_original.edf")
+    raw_clean.export(data_dir / f"{subject}_{run}_clean.edf")
+    raw_noise.export(data_dir / f"{subject}_{run}_noise.edf")

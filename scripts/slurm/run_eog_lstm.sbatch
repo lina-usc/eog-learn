@@ -7,4 +7,4 @@
 module load python3/anaconda/2023.9
 source /work/co20/eog_lstm/venv_lstm/bin/activate
 
-./run_eog_lstm_regression.py $SLURM_ARRAY_TASK_ID
+./../run_eog_lstm_regression.py $SLURM_ARRAY_TASK_ID
