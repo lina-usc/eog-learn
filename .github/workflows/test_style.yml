@@ -28,4 +28,4 @@ jobs:
       - name: Test style
         run: |
           codespell eoglearn
-          ruff eoglearn
+          ruff check eoglearn
