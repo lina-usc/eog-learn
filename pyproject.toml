@@ -59,6 +59,8 @@ doc = [
 
 extras = ['pymatreader', 'pandas', 'defusedxml']
 
+paper = ['marimo', 'frozendict']
+
 test = [
     'black',
     'codespell',
@@ -73,6 +75,7 @@ all = [
     'eoglearn[doc]',
     'eoglearn[test]',
     'eoglearn[extras]',
+    'eoglearn[paper]',
 ]
 full = [
     'eoglearn[all]',

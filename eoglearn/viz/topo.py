@@ -19,6 +19,7 @@ def plot_values_topomap(
     image_interp="bilinear",
     sensors=True,
     show=True,
+    cbar_label="Percentage of EOG in signal",
     **kwargs
 ):
     """Plot a 2D topographic map of EEG data.
@@ -54,6 +55,9 @@ def plot_values_topomap(
         positions. Defaults to True.
     show : bool
         Whether to show the plot or not. Defaults to True.
+    cbar_label : str
+        Label for the colorbar. Defaults to
+        ``'Percentage of EOG in signal'``.
     kwargs : dict
         Valid keyword arguments for mne.viz.plot_topomap
 
@@ -92,6 +96,6 @@ def plot_values_topomap(
     )
 
     if colorbar:
-        fig.colorbar(im[0], ax=axes, shrink=0.6, label="Percentage of EOG in signal")
+        fig.colorbar(im[0], ax=axes, shrink=0.6, label=cbar_label)
     plt_show(show, fig)
     return fig
