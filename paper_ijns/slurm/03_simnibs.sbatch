@@ -17,6 +17,12 @@
 
 set -euo pipefail
 
+# Skip everything if the output file already exists — no conda needed.
+if [[ -f "$SCRIPT_DIR/leadfield_elect_only.npy" ]]; then
+    echo "[$(date '+%H:%M:%S')] leadfield_elect_only.npy already exists — skipping SimNIBS computation."
+    exit 0
+fi
+
 # Load the module so that 'conda' is available on $PATH
 module load "$MODULE"
 
@@ -26,11 +32,6 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "$SIMNIBS_ENV"
 
 cd "$SCRIPT_DIR"
-
-if [[ -f "leadfield_elect_only.npy" ]]; then
-    echo "[$(date '+%H:%M:%S')] leadfield_elect_only.npy already exists — skipping SimNIBS computation."
-    exit 0
-fi
 
 echo "[$(date '+%H:%M:%S')] Running biophysical forward model (SimNIBS env: $SIMNIBS_ENV)"
 
