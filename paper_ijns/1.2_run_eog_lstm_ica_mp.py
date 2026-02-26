@@ -1,4 +1,5 @@
 import sys
+import traceback
 import multiprocessing
 from pathlib import Path
 
@@ -67,8 +68,8 @@ def process(subject_run, root, tmax=None):
         print(f"  [{subject} run {run}] Done "
               f"({len(exclude_idx)} eye-blink components removed).", flush=True)
 
-    except:
-        raise
+    except Exception:
+        traceback.print_exc()
 
 
 root = "processed/"

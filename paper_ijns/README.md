@@ -260,10 +260,51 @@ files already exist (useful when restarting a partially-completed run).
 ```bash
 squeue -u $USER                                   # show all your jobs
 squeue -u $USER --format="%.10i %.25j %.8T %E"   # with state and dependency
-tail -f paper_ijns/slurm/logs/lstm_<JOB>_<TASK>.out
+tail -f paper_ijns/slurm/logs/lstm_<JOBID>_<TASKID>.out
 ```
 
-### 5 — Resubmit a single failed subject
+Log files for array jobs use the naming `{step}_{JOBID}_{TASKID}.out` where `JOBID`
+is the master array job ID (the same for all tasks of that job) and `TASKID` is the
+0-based subject index from `slurm/subjects.txt`. Single jobs use `{step}_{JOBID}.out`.
+
+### 5 — Check pipeline results
+
+After all jobs complete (or if any are cancelled), run the execution report to see
+which subjects/steps finished and whether any errors were logged:
+
+```bash
+python paper_ijns/slurm/report.py
+# with a custom output directory:
+python paper_ijns/slurm/report.py --root /path/to/processed/ --logs paper_ijns/slurm/logs/
+```
+
+The report checks for expected output files for every subject/run/step and scans
+all `.out`/`.err` log files for Python tracebacks. Example output:
+
+```
+========================================================================
+  PIPELINE EXECUTION REPORT
+  Output root : paper_ijns/processed
+  Log dir     : paper_ijns/slurm/logs
+========================================================================
+
+────────────────────────────────────────────────────────────────────────
+  Step 1.1 perrecording  [LSTM (per-recording)]
+  Status : INCOMPLETE  (2/178 recordings missing output)
+  Missing recordings:
+    EP10  runs: 4
+    EP23  runs: 2
+
+...
+
+  OVERALL: FAILURES DETECTED — review missing recordings and log errors above
+```
+
+**Individual subject failures do not cancel downstream steps.** If some recordings
+fail, the pipeline continues and later steps (xarray aggregation, analysis) run on
+whatever data is available.
+
+### 6 — Resubmit a single failed subject
 
 Find the subject's index in `slurm/subjects.txt` (0-based), then:
 
@@ -318,6 +359,7 @@ paper_ijns/
 └── slurm/
     ├── config.yml                      # ← Edit this before submitting to HPC
     ├── submit_all.sh                   # Master SLURM submission script
+    ├── report.py                       # Execution report: checks output files & log errors
     ├── 01_lstm.sbatch                  # Array job: LSTM regression (per subject)
     ├── 02_ica.sbatch                   # Array job: ICA + ICLabel
     ├── 03_simnibs.sbatch               # Single job: biophysical forward model

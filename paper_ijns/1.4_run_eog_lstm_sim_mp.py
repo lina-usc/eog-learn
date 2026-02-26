@@ -1,4 +1,5 @@
 import sys
+import traceback
 import multiprocessing
 from pathlib import Path
 
@@ -59,8 +60,8 @@ def process(subject_run, root):
 
         print(f"  [{subject} run {run}] Done.", flush=True)
 
-    except:
-        raise
+    except Exception:
+        traceback.print_exc()
 
 
 root = "processed/"

@@ -18,8 +18,8 @@
 #SBATCH --cpus-per-task=5
 #SBATCH --mem=8G
 #SBATCH --time=1:00:00
-#SBATCH --output=slurm/logs/lstm_%j_%a.out
-#SBATCH --error=slurm/logs/lstm_%j_%a.err
+#SBATCH --output=slurm/logs/lstm_%A_%a.out
+#SBATCH --error=slurm/logs/lstm_%A_%a.err
 
 set -euo pipefail
 
