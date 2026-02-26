@@ -10,7 +10,7 @@
 # =============================================================================
 #SBATCH --cpus-per-task=5
 #SBATCH --mem=8G
-#SBATCH --time=1:00:00
+#SBATCH --time=4:00:00
 #SBATCH --output=slurm/logs/sim_%A_%a.out
 #SBATCH --error=slurm/logs/sim_%A_%a.err
 

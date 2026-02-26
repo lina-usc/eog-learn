@@ -267,6 +267,20 @@ Log files for array jobs use the naming `{step}_{JOBID}_{TASKID}.out` where `JOB
 is the master array job ID (the same for all tasks of that job) and `TASKID` is the
 0-based subject index from `slurm/subjects.txt`. Single jobs use `{step}_{JOBID}.out`.
 
+`submit_all.sh` writes `slurm/submitted_jobs.json` with all job IDs. Use it with
+the pipeline status monitor:
+
+```bash
+# One-shot summary (pending / running / completed / failed per step)
+python paper_ijns/slurm/status.py
+
+# Auto-refresh every 30 s
+python paper_ijns/slurm/status.py --watch
+
+# Auto-refresh every 60 s
+python paper_ijns/slurm/status.py --watch 60
+```
+
 ### 5 — Check pipeline results
 
 After all jobs complete (or if any are cancelled), run the execution report to see
@@ -359,7 +373,10 @@ paper_ijns/
 └── slurm/
     ├── config.yml                      # ← Edit this before submitting to HPC
     ├── submit_all.sh                   # Master SLURM submission script
-    ├── report.py                       # Execution report: checks output files & log errors
+    ├── submitted_jobs.json             # Auto-generated: job IDs from last submission
+    ├── subjects.txt                    # Auto-generated: one subject ID per line
+    ├── report.py                       # Post-run report: output files, logs, timings
+    ├── status.py                       # Live monitor: pending/running/failed per step
     ├── 01_lstm.sbatch                  # Array job: LSTM regression (per subject)
     ├── 02_ica.sbatch                   # Array job: ICA + ICLabel
     ├── 03_simnibs.sbatch               # Single job: biophysical forward model

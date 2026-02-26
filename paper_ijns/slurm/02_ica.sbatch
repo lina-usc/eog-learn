@@ -7,7 +7,7 @@
 # =============================================================================
 #SBATCH --cpus-per-task=5
 #SBATCH --mem=12G
-#SBATCH --time=2:00:00
+#SBATCH --time=8:00:00
 #SBATCH --output=slurm/logs/ica_%A_%a.out
 #SBATCH --error=slurm/logs/ica_%A_%a.err
 

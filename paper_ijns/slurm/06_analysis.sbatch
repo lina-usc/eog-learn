@@ -12,7 +12,7 @@
 # =============================================================================
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
-#SBATCH --time=4:00:00
+#SBATCH --time=16:00:00
 #SBATCH --output=slurm/logs/analysis_%j.out
 #SBATCH --error=slurm/logs/analysis_%j.err
 

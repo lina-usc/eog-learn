@@ -2,7 +2,8 @@
 """report.py — Pipeline execution report.
 
 Checks which subjects/runs completed each processing step by looking for
-expected output files, and scans SLURM log files for tracebacks.
+expected output files, scans SLURM log files for tracebacks, and reports
+per-step timing statistics from timings.csv.
 
 Usage
 -----
@@ -11,9 +12,12 @@ Usage
 """
 from __future__ import annotations
 
+import csv
+import math
 import re
 import sys
 import argparse
+from collections import defaultdict
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent.parent   # paper_ijns/
@@ -60,6 +64,74 @@ STEPS: list[tuple[str, str, list[str], bool]] = [
 
 def _all_files_exist(templates: list[str], subject: str, run: int, root: Path) -> bool:
     return all((root / t.format(s=subject, r=run)).exists() for t in templates)
+
+
+def load_timings(root: Path) -> list[dict]:
+    """Load timings.csv, skipping duplicate header rows."""
+    path = root / "timings.csv"
+    if not path.exists():
+        return []
+    rows = []
+    with open(path, newline="") as f:
+        for row in csv.DictReader(f):
+            if row.get("subject") == "subject":
+                continue  # skip duplicate headers from concurrent starts
+            rows.append(row)
+    return rows
+
+
+def print_timing_stats(root: Path, W: int = 72) -> None:
+    rows = load_timings(root)
+    print(f"\n{'=' * W}")
+    print("  TIMING STATISTICS")
+    print(f"{'─' * W}")
+
+    if not rows:
+        print(f"  No timings.csv found in {root}")
+        return
+
+    # Group by (step, condition)
+    groups: dict[tuple, list[float]] = defaultdict(list)
+    failures: dict[tuple, list[tuple[str, int, float]]] = defaultdict(list)
+    for row in rows:
+        key = (row["step"], row["condition"])
+        dur = float(row["duration_s"])
+        if row["status"] in ("ok", "n/a"):
+            groups[key].append(dur)
+        else:
+            failures[key].append((row["subject"], int(row["run"]), dur))
+
+    all_keys = sorted(set(list(groups) + list(failures)))
+    for key in all_keys:
+        step, condition = key
+        label = f"Step {step}" + (f"  [{condition}]" if condition else "")
+        durations = groups[key]
+        fail_list = failures[key]
+
+        print(f"\n  {label}")
+        if durations:
+            n = len(durations)
+            mean = sum(durations) / n
+            variance = sum((d - mean) ** 2 for d in durations) / n
+            std = math.sqrt(variance)
+            mn, mx = min(durations), max(durations)
+            print(f"    n={n}  mean={mean/60:.1f}min  "
+                  f"std={std/60:.1f}min  "
+                  f"min={mn/60:.1f}min  max={mx/60:.1f}min")
+            slow = [(s, r, d) for s, r, d in
+                    ((row["subject"], int(row["run"]), float(row["duration_s"]))
+                     for row in rows
+                     if (row["step"], row["condition"]) == key
+                     and row["status"] == "ok")
+                    if d > 2 * mean]
+            if slow:
+                print(f"    Slow (>2× mean):")
+                for s, r, d in sorted(slow, key=lambda x: -x[2]):
+                    print(f"      {s} run {r}: {d/60:.1f}min")
+        if fail_list:
+            print(f"    Failed: {len(fail_list)} run(s)")
+            for s, r, d in fail_list:
+                print(f"      {s} run {r}: failed after {d/60:.1f}min")
 
 
 def scan_logs(log_dir: Path) -> list[tuple[str, str]]:
@@ -149,6 +221,9 @@ def print_report(root: Path, log_dir: Path) -> None:
                 print(f"    context : {ctx}")
         else:
             print("  No tracebacks found in log files.")
+
+    # ── Timing statistics ─────────────────────────────────────────────────────
+    print_timing_stats(root, W)
 
     # ── Overall verdict ───────────────────────────────────────────────────────
     print(f"\n{'=' * W}")

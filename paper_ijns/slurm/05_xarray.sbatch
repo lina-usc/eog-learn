@@ -10,7 +10,7 @@
 # =============================================================================
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
-#SBATCH --time=3:00:00
+#SBATCH --time=12:00:00
 #SBATCH --output=slurm/logs/xarray_%j.out
 #SBATCH --error=slurm/logs/xarray_%j.err
 

@@ -1,4 +1,7 @@
 import sys
+import os
+import time
+import errno
 import traceback
 import multiprocessing
 from pathlib import Path
@@ -20,10 +23,37 @@ from analyses import get_sim_eog
 mne.set_log_level("WARNING")
 
 
-def process(subject_run, root):
+# ── Timing helpers ────────────────────────────────────────────────────────────
+
+def _init_timing_csv(path: Path) -> None:
+    """Atomically create timings.csv with header (safe for concurrent processes)."""
     try:
-        subject, run = subject_run
+        fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(fd, b"subject,run,step,condition,duration_s,status\n")
+        os.close(fd)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
+
+
+def _log_timing(root: str, subject: str, run, step: str, condition: str,
+                duration: float, status: str) -> None:
+    """Append one timing row to timings.csv (safe for concurrent O_APPEND writes)."""
+    row = f"{subject},{run},{step},{condition},{duration:.2f},{status}\n"
+    try:
+        with open(Path(root) / "timings.csv", "a") as f:
+            f.write(row)
+    except OSError:
+        pass  # timing failure is non-critical
+
+
+def process(subject_run, root):
+    subject, run = subject_run
+    t0 = time.perf_counter()
+    status = "failed"
+    try:
         if "EP" not in subject:
+            status = "n/a"
             return
 
         print(f"  [{subject} run {run}] Applying biophysical simulation...", flush=True)
@@ -59,9 +89,13 @@ def process(subject_run, root):
             root + f"{subject}_{run}_simlocal.edf", overwrite=True, verbose=False)
 
         print(f"  [{subject} run {run}] Done.", flush=True)
+        status = "ok"
 
     except Exception:
         traceback.print_exc()
+    finally:
+        _log_timing(root, subject, run, "1.4", "",
+                    time.perf_counter() - t0, status)
 
 
 root = "processed/"
@@ -99,6 +133,7 @@ if __name__ == "__main__":
 
     nb_processes = 5
     Path(root).mkdir(exist_ok=True)
+    _init_timing_csv(Path(root) / "timings.csv")
 
     runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
     subjects = args.subjects if args.subjects else list(runs_dict.keys())
