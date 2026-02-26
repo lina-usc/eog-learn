@@ -176,9 +176,8 @@ def rms(x):
     return np.sqrt(np.mean(x**2, axis=1))
 
 
-def get_snrs(evoked, event_id):
-    kinds = ["clean", "ica", "sim", "simlocal"]
-
+def get_snrs(evoked, event_id,
+             kinds=("clean", "ica", "sim", "simlocal")):
     t = evoked["original"][event_id].times
     ev = {kind: evoked[kind][event_id].get_data() for kind in evoked}
     rt_masks = {"pre": t < 0,
@@ -187,7 +186,7 @@ def get_snrs(evoked, event_id):
     dfs = []
     dfs_topo = {(time, kind): []
                 for time, kind in product(["pre", "post"], kinds)}
-    eeg_names = evoked["clean"][event_id].ch_names
+    eeg_names = evoked[kinds[0]][event_id].ch_names
     for condition, mask in rt_masks.items():
         signal = rms(ev["original"][:, mask])
 
@@ -251,6 +250,11 @@ def compute_et_xarrays(path="processed", diff=False, nb_files=None, dryrun=False
             df["event_id"] = event_id
             et_signals_dfs.append(df)
 
+    if not snr_dfs:
+        raise RuntimeError(
+            f"No valid recordings found in '{path}'. "
+            "Ensure Steps 1–4 have been run successfully."
+        )
     snr_df = pd.concat(snr_dfs)
     topo_ev_df = {key: pd.concat(topo_ev_dfs[key]) for key in topo_ev_dfs}
 
@@ -359,6 +363,11 @@ def compute_erp_xarrays(path="processed", diff=False, nb_files=None, dryrun=Fals
                     "event_id": nave["original"].index.values},
             dims=["subject", "run", "event_id"]))
 
+    if not eeg_signals_dfs:
+        raise RuntimeError(
+            f"No valid recordings found in '{path}'. "
+            "Ensure Steps 1–4 have been run successfully."
+        )
     eeg_signals_df = pd.concat(eeg_signals_dfs)
     topo_df = {kind: pd.concat(topo_dfs[kind]) for kind in topo_dfs}
 

@@ -39,8 +39,9 @@ def __(mo):
 
 @app.cell
 def __(mo):
+    import os as _os
     path_input = mo.ui.text(
-        value="processed",
+        value=_os.environ.get("EOG_PROCESSED_PATH", "processed"),
         label="Path to processed data directory (containing *_clean.edf files)",
         full_width=True,
     )

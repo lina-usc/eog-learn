@@ -1,0 +1,30 @@
+# =============================================================================
+# config.yml — Cluster and pipeline settings for the paper_ijns SLURM pipeline
+#
+# Edit this file before submitting jobs. All cluster-specific values live here;
+# no other file needs to be changed.
+# =============================================================================
+
+# ── Cluster settings ─────────────────────────────────────────────────────────
+
+# SLURM partition (queue) to submit to
+partition: AI_Center
+
+# Anaconda module to load (provides the base Python environment)
+module: "python3/anaconda/2023.9"
+
+# Path to the virtual environment for the main pipeline
+# Must have eog-learn installed: pip install -e ".[extras,paper]"
+venv: /work/co20/eog_lstm/venv_lstm
+
+# Conda environment that has SimNIBS ≥ 4 installed (used for Step 3 only).
+# SimNIBS requires Python 3.9 on macOS Intel; adjust for your cluster.
+simnibs_env: simnibs4
+
+# ── Pipeline settings ─────────────────────────────────────────────────────────
+
+# Output directory for all processed EDF files (relative to paper_ijns/ or absolute)
+root: processed/
+
+# Set to false to skip recordings whose output files already exist
+recompute: true

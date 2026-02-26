@@ -20,7 +20,12 @@ import torch.nn.functional as F # for easy use of relu
 import mne
 import eoglearn  # This is my package for this project
 
+from tqdm import tqdm
+
 from filter import filter_kwargs
+
+mne.set_log_level("WARNING")
+
 
 class EOGRegressor(nn.Module):
     def __init__(self, n_input_features, n_output_features,
@@ -72,10 +77,16 @@ def train_the_model(X, Y, num_epochs=1000, hidden_size=64, num_layers=1, dropout
     # Optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 
+    # Pick a tqdm position based on which pool worker we're in so that
+    # concurrent training bars each get their own terminal line.
+    identity = multiprocessing.current_process()._identity
+    pos = identity[0] if identity else 0  # workers are 1-indexed; main has no identity
+
     losses = np.zeros(num_epochs)
     # Training loop
     model.train()
-    for i, epoch in enumerate(range(num_epochs)):
+    for i in tqdm(range(num_epochs), desc="Training LSTM",
+                  position=pos, leave=False):
         # Forward pass
         outputs = model(X)
 
@@ -87,10 +98,6 @@ def train_the_model(X, Y, num_epochs=1000, hidden_size=64, num_layers=1, dropout
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-
-        # Print the loss every 100 iterations
-        if i % 100 == 0:
-            print(f'Epoch: {epoch} Loss: {loss.item():.4f}')
 
     # Set model to eval mode to turn off dropout
     model.eval()
@@ -109,24 +116,26 @@ def prep_data(subject="EP10", run=1):
     fpath = eoglearn.datasets.fetch_eegeyenet(subject=subject, run=run)
     raw = eoglearn.io.read_raw_eegeyenet(fpath)
 
-    raw.set_montage("GSN-HydroCel-129")
-    raw.filter(picks="eeg", **filter_kwargs).resample(100)  # DO NOT filter eyetrack channels
-    raw.set_eeg_reference("average")
+    raw.set_montage("GSN-HydroCel-129", verbose=False)
+    raw.filter(picks="eeg", verbose=False, **filter_kwargs).resample(100, verbose=False)
+    raw.set_eeg_reference("average", verbose=False)
     return raw
 
 
-def format_data_for_ml(raw, tmax):
+def format_data_for_ml(raw, tmax, scaler_x=None, scaler_y=None):
     # normalize the dataset
     X = raw.get_data(picks=["eyetrack"]).T #[::5] # decimate the eyetracking data
 
     Y = raw.get_data(picks="eeg").T
 
-    scaler = StandardScaler()
-    X = scaler.fit_transform(X)
+    if scaler_x is None:
+        scaler_x = StandardScaler().fit(X)
+    X = scaler_x.transform(X)
+
     # For Y we need to split the fit and transform into 2 steps
     # Because we will need to inverse transform the model output later during evaluation
-    scaler = StandardScaler()
-    scaler_y = scaler.fit(Y)
+    if scaler_y is None:
+        scaler_y = StandardScaler().fit(Y)
     Y = scaler_y.transform(Y)
 
     # 1s epochs
@@ -137,7 +146,26 @@ def format_data_for_ml(raw, tmax):
     X_tensor = torch.from_numpy(X).float()
     Y_tensor = torch.from_numpy(Y).float()
 
-    return X_tensor, Y_tensor, scaler_y
+    return X_tensor, Y_tensor, scaler_x, scaler_y
+
+
+def fit_scalers(raws):
+    """Fit StandardScalers on concatenated data from multiple raws."""
+    X_all = np.vstack([raw.get_data(picks=["eyetrack"]).T for raw in raws])
+    Y_all = np.vstack([raw.get_data(picks="eeg").T for raw in raws])
+    return StandardScaler().fit(X_all), StandardScaler().fit(Y_all)
+
+
+def concat_tensors(raws, scaler_x, scaler_y):
+    """Format and concatenate multiple raws into training tensors."""
+    X_list, Y_list = [], []
+    for raw in raws:
+        tmax = int(raw.times[-1])
+        raw_crop = raw.copy().crop(tmax=tmax, include_tmax=False)
+        X, Y, _, _ = format_data_for_ml(raw_crop, tmax, scaler_x, scaler_y)
+        X_list.append(X)
+        Y_list.append(Y)
+    return torch.cat(X_list, dim=0), torch.cat(Y_list, dim=0)
 
 
 def clean_data(subject, run, tmax=None):
@@ -149,51 +177,210 @@ def clean_data(subject, run, tmax=None):
         tmax = int(raw.times[-1])
     raw_train.crop(tmax=tmax, include_tmax=False)
 
-    X_tensor, Y_tensor, scaler_y = format_data_for_ml(raw_train, tmax)
+    X_tensor, Y_tensor, _, scaler_y = format_data_for_ml(raw_train, tmax)
     model, losses = train_the_model(X_tensor, Y_tensor, dropout=.5, num_layers=2)
 
     tmax = int(raw.times[-1])
     raw.crop(tmax=tmax, include_tmax=False)
-    X_tensor, Y_tensor, scaler_y = format_data_for_ml(raw, tmax)
+    X_tensor, Y_tensor, _, scaler_y = format_data_for_ml(raw, tmax)
     predicted_noise, denoised_output = eval_model(model, X_tensor, Y_tensor)
 
     # Reshape back to 2D and inverse transform to original units (Volts)
-    predicted_noise = scaler_y.inverse_transform(predicted_noise.reshape(tmax*int(raw.info['sfreq']), 129)).T
-    denoised_output = scaler_y.inverse_transform(denoised_output.reshape(tmax*int(raw.info['sfreq']), 129)).T
+    sfreq = int(raw.info['sfreq'])
+    predicted_noise = scaler_y.inverse_transform(
+        predicted_noise.reshape(tmax * sfreq, 129)).T
+    denoised_output = scaler_y.inverse_transform(
+        denoised_output.reshape(tmax * sfreq, 129)).T
 
-    raw_clean = mne.io.RawArray(denoised_output, raw.copy().pick("eeg").info)
-    raw_noise = mne.io.RawArray(predicted_noise, raw.copy().pick("eeg").info)
+    raw_clean = mne.io.RawArray(denoised_output, raw.copy().pick("eeg").info, verbose=False)
+    raw_noise = mne.io.RawArray(predicted_noise, raw.copy().pick("eeg").info, verbose=False)
     return raw, raw_clean, raw_noise
 
 
-def process(*args, tmax=None):
+def clean_data_per_subject(subject, run):
+    """Train on all other runs from the same subject; test on target run.
+
+    Returns None if the subject has only one run (no training data available).
+    """
+    runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
+    all_runs = runs_dict[subject]
+    train_runs = [r for r in all_runs if r != run]
+    if not train_runs:
+        return None
+
+    train_raws = [prep_data(subject=subject, run=r) for r in train_runs]
+    test_raw = prep_data(subject=subject, run=run)
+
+    scaler_x, scaler_y = fit_scalers(train_raws)
+    X_train, Y_train = concat_tensors(train_raws, scaler_x, scaler_y)
+    model, _ = train_the_model(X_train, Y_train, dropout=.5, num_layers=2)
+
+    tmax = int(test_raw.times[-1])
+    test_raw.crop(tmax=tmax, include_tmax=False)
+    X_test, Y_test, _, _ = format_data_for_ml(test_raw, tmax, scaler_x, scaler_y)
+    predicted_noise, denoised_output = eval_model(model, X_test, Y_test)
+
+    sfreq = int(test_raw.info['sfreq'])
+    predicted_noise = scaler_y.inverse_transform(
+        predicted_noise.reshape(tmax * sfreq, 129)).T
+    denoised_output = scaler_y.inverse_transform(
+        denoised_output.reshape(tmax * sfreq, 129)).T
+
+    raw_clean = mne.io.RawArray(denoised_output, test_raw.copy().pick("eeg").info, verbose=False)
+    raw_noise = mne.io.RawArray(predicted_noise, test_raw.copy().pick("eeg").info, verbose=False)
+    return test_raw, raw_clean, raw_noise
+
+
+def clean_data_across_subjects(subject, run):
+    """Train on all runs from all other subjects; test on target subject/run."""
+    runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
+
+    train_raws = []
+    for subj in runs_dict:
+        if subj == subject or "EP" not in subj:
+            continue
+        for r in runs_dict[subj]:
+            train_raws.append(prep_data(subject=subj, run=r))
+
+    test_raw = prep_data(subject=subject, run=run)
+
+    scaler_x, scaler_y = fit_scalers(train_raws)
+    X_train, Y_train = concat_tensors(train_raws, scaler_x, scaler_y)
+    model, _ = train_the_model(X_train, Y_train, dropout=.5, num_layers=2)
+
+    tmax = int(test_raw.times[-1])
+    test_raw.crop(tmax=tmax, include_tmax=False)
+    X_test, Y_test, _, _ = format_data_for_ml(test_raw, tmax, scaler_x, scaler_y)
+    predicted_noise, denoised_output = eval_model(model, X_test, Y_test)
+
+    sfreq = int(test_raw.info['sfreq'])
+    predicted_noise = scaler_y.inverse_transform(
+        predicted_noise.reshape(tmax * sfreq, 129)).T
+    denoised_output = scaler_y.inverse_transform(
+        denoised_output.reshape(tmax * sfreq, 129)).T
+
+    raw_clean = mne.io.RawArray(denoised_output, test_raw.copy().pick("eeg").info, verbose=False)
+    raw_noise = mne.io.RawArray(predicted_noise, test_raw.copy().pick("eeg").info, verbose=False)
+    return test_raw, raw_clean, raw_noise
+
+
+def process(subject_run, root, tmax=None):
     try:
-        subject, run = args[0]
+        subject, run = subject_run
+        print(f"  [{subject} run {run}] Training LSTM...", flush=True)
         raw, raw_clean, raw_noise = clean_data(subject=subject, run=run, tmax=tmax)
-        raw.export(root + f"{subject}_{run}_original.edf", overwrite=True)
-        raw_clean.export(root + f"{subject}_{run}_clean.edf", overwrite=True)
-        raw_noise.export(root + f"{subject}_{run}_noise.edf", overwrite=True)
-    except:
+        raw.export(root + f"{subject}_{run}_original.edf", overwrite=True, verbose=False)
+        raw_clean.export(root + f"{subject}_{run}_clean.edf", overwrite=True, verbose=False)
+        raw_noise.export(root + f"{subject}_{run}_noise.edf", overwrite=True, verbose=False)
+        print(f"  [{subject} run {run}] Done.", flush=True)
+    except Exception:
+        pass
+
+
+def process_persubject(subject_run, root):
+    try:
+        subject, run = subject_run
+        if "EP" not in subject:
+            return
+        print(f"  [{subject} run {run}] Training LSTM (per-subject)...", flush=True)
+        result = clean_data_per_subject(subject, run)
+        if result is None:
+            return
+        raw, raw_clean, raw_noise = result
+        raw_clean.export(root + f"{subject}_{run}_clean_persubject.edf", overwrite=True, verbose=False)
+        raw_noise.export(root + f"{subject}_{run}_noise_persubject.edf", overwrite=True, verbose=False)
+        print(f"  [{subject} run {run}] Done.", flush=True)
+    except Exception:
+        pass
+
+
+def process_acrosssubject(subject_run, root):
+    try:
+        subject, run = subject_run
+        if "EP" not in subject:
+            return
+        print(f"  [{subject} run {run}] Training LSTM (across-subject)...", flush=True)
+        raw, raw_clean, raw_noise = clean_data_across_subjects(subject, run)
+        raw_clean.export(
+            root + f"{subject}_{run}_clean_acrosssubject.edf", overwrite=True, verbose=False)
+        raw_noise.export(
+            root + f"{subject}_{run}_noise_acrosssubject.edf", overwrite=True, verbose=False)
+        print(f"  [{subject} run {run}] Done.", flush=True)
+    except Exception:
         pass
 
 
 root = "processed/"
-#root = "/Users/christian/Library/CloudStorage/OneDrive-UniversityofSouthCarolina/Data/eog_cleaning_study/processed/"
+# root = "/Users/christian/Library/CloudStorage/OneDrive-UniversityofSouthCarolina/Data/eog_cleaning_study/processed/"
 
 
 if __name__ == "__main__":
+    import argparse
+    from functools import partial
 
-    recompute = True
-    nb_processes = 5
+    parser = argparse.ArgumentParser(
+        description="Run LSTM EOG regression cleaning pipeline."
+    )
+    parser.add_argument(
+        "--condition",
+        choices=["perrecording", "persubject", "acrosssubject"],
+        default="perrecording",
+        help="Training/testing regime (default: perrecording)",
+    )
+    parser.add_argument(
+        "--root",
+        default=root,
+        help="Output directory for processed EDF files (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--no-recompute",
+        dest="recompute",
+        action="store_false",
+        default=True,
+        help="Skip recordings whose output files already exist",
+    )
+    parser.add_argument(
+        "--subjects",
+        nargs="+",
+        default=None,
+        metavar="SUBJECT",
+        help="Restrict processing to these subjects (e.g. EP10 EP11)",
+    )
+    args = parser.parse_args()
+
+    condition = args.condition
+    root = args.root
+    recompute = args.recompute
+
+    # Use fewer processes for across-subject (memory-intensive)
+    nb_processes = 2 if condition == "acrosssubject" else 5
     Path(root).mkdir(exist_ok=True)
 
     runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
+    subjects = args.subjects if args.subjects else list(runs_dict.keys())
     subject_run = np.concatenate([[(subject, run)
                                    for run in runs_dict[subject]]
-                                  for subject in runs_dict])
-    subject_run = [(subject, run)
-                   for subject, run in subject_run
-                   if recompute or not Path(root + f"{subject}_{run}_noise.edf").exists()]
+                                  for subject in subjects
+                                  if subject in runs_dict])
 
-    p = multiprocessing.Pool(nb_processes)
-    p.map(process, subject_run)
+    if condition == "perrecording":
+        subject_run = [(s, r) for s, r in subject_run
+                       if recompute or not Path(root + f"{s}_{r}_noise.edf").exists()]
+        with multiprocessing.Pool(nb_processes) as p:
+            list(tqdm(p.imap(partial(process, root=root), subject_run),
+                      total=len(subject_run), desc="Recordings",
+                      position=0, leave=True))
+    elif condition == "persubject":
+        subject_run = [(s, r) for s, r in subject_run
+                       if recompute or not Path(
+                           root + f"{s}_{r}_noise_persubject.edf").exists()]
+        with multiprocessing.Pool(nb_processes) as p:
+            list(tqdm(p.imap(partial(process_persubject, root=root), subject_run),
+                      total=len(subject_run), desc="Recordings"))
+    elif condition == "acrosssubject":
+        subject_run = [(s, r) for s, r in subject_run
+                       if recompute or not Path(
+                           root + f"{s}_{r}_noise_acrosssubject.edf").exists()]
+        with multiprocessing.Pool(nb_processes) as p:
+            list(tqdm(p.imap(partial(process_acrosssubject, root=root), subject_run),
+                      total=len(subject_run), desc="Recordings"))

@@ -59,7 +59,7 @@ doc = [
 
 extras = ['pymatreader', 'pandas', 'defusedxml']
 
-paper = ['marimo', 'frozendict']
+paper = ['marimo', 'frozendict', 'mne-connectivity']
 
 test = [
     'black',

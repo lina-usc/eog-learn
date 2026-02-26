@@ -170,14 +170,20 @@ def __(mo):
 
 @app.cell
 def __(cond, dipole_moments, dipole_positions, mesh, np):
-    from simnibs.simulation import electric_dipole
+    import os as _os
+    electric_dipole = None
     source_model = "partial integration"
-    sim = electric_dipole(
-        mesh, cond, dipole_positions, dipole_moments,
-        source_model, solver_options=None, units="mm",
-    )
-    np.save("leadfield.npy", sim)
-    print(f"Saved leadfield.npy  shape: {sim.shape}")
+    if _os.path.exists("leadfield.npy"):
+        sim = np.load("leadfield.npy")
+        print(f"Loaded existing leadfield.npy  shape: {sim.shape}")
+    else:
+        from simnibs.simulation import electric_dipole
+        sim = electric_dipole(
+            mesh, cond, dipole_positions, dipole_moments,
+            source_model, solver_options=None, units="mm",
+        )
+        np.save("leadfield.npy", sim)
+        print(f"Saved leadfield.npy  shape: {sim.shape}")
     return electric_dipole, sim, source_model
 
 
@@ -251,7 +257,7 @@ def __(coreg, info_ref, mne, np):
     _eeg_picks = mne.pick_types(info_ref, eeg=True)
     _eeg_pos = np.array([info_ref["chs"][p]["loc"][:3] for p in _eeg_picks])
     _eeg_pos_mri = mne.transforms.apply_trans(_trans, _eeg_pos)
-    eegp_locs, _ = _project_onto_surface(_eeg_pos_mri, _head_surf, project_rrs=True)
+    _, _, eegp_locs = _project_onto_surface(_eeg_pos_mri, _head_surf, project_rrs=True)
     print(f"Projected {len(eegp_locs)} electrode positions onto head surface")
     return _get_head_surface, _project_onto_surface, eegp_locs
 
@@ -361,7 +367,7 @@ def __(val_run, val_subject):
 
 
 @app.cell
-def __(mne, np, optimal_alpha, raw_sim_val, raw_val):
+def __(mne, np, optimal_alpha, plt, raw_sim_val, raw_val):
     from eoglearn.viz import overlay_raws_stack
     _EOG_CH = [
         "E127", "E126", "E17", "E21", "E14",
@@ -373,7 +379,6 @@ def __(mne, np, optimal_alpha, raw_sim_val, raw_val):
     _raw_sim_scaled = mne.io.RawArray(_x_sim * _alpha, raw_val.copy().pick("eeg").info)
 
     # Gaze angle plots
-    import matplotlib.pyplot as plt
     _gaze = raw_val.get_data(picks=["L-GAZE-X", "L-GAZE-Y"])
     fig_gaze, ax_gaze = plt.subplots(figsize=(12, 3))
     ax_gaze.plot(raw_val.times[:3000], _gaze[0, :3000], label="Gaze X")

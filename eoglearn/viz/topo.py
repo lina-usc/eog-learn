@@ -16,7 +16,7 @@ def plot_values_topomap(
     vmin=None,
     vmax=None,
     names=None,
-    image_interp="bilinear",
+    image_interp="linear",
     sensors=True,
     show=True,
     cbar_label="Percentage of EOG in signal",

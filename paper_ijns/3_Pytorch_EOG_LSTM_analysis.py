@@ -60,13 +60,14 @@ def __(mo):
 
 @app.cell
 def __(mo):
+    import os as _os
     xr_path_input = mo.ui.text(
         value=".",
         label="Path to directory containing .netcdf xarray files",
         full_width=True,
     )
     processed_path_input = mo.ui.text(
-        value="processed/",
+        value=_os.environ.get("EOG_PROCESSED_PATH", "processed/"),
         label="Path to processed EDF files (for raw signal examples)",
         full_width=True,
     )
@@ -91,7 +92,8 @@ def __(Path, np, xr, xr_path_input):
         }
         xarrays = {}
         for label in subsets:
-            xarrays[label] = xr.open_dataset(path / f"{label}{postfix}.netcdf")
+            xarrays[label] = xr.open_dataset(
+                path / f"{label}{postfix}.netcdf", engine="netcdf4")
             if subsets[label]:
                 if label == "eeg_signals":
                     xarrays["eeg_nave"] = xarrays[label]["nave"]
@@ -125,6 +127,8 @@ def __(mo):
 
 @app.cell
 def __(plot_dist_dot, plt, xarrays):
+    import os as _os
+    _os.makedirs("images", exist_ok=True)
     fig_dots, ax_dots = plt.subplots(1, 1, figsize=(6, 5))
     plot_dist_dot(ax_dots, xarrays["et_signals"])
     fig_dots.savefig("images/dot_positions.png", dpi=300)

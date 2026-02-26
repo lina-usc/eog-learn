@@ -11,22 +11,27 @@ import numpy as np
 import mne
 import eoglearn  # This is my package for this project
 
+from tqdm import tqdm
+
 from eoglearn.models.utils import optimal_alpha
 from analyses import get_sim_eog
 
+mne.set_log_level("WARNING")
 
-def process(*args):
+
+def process(subject_run, root):
     try:
-        subject, run = args[0]
-        if not "EP" in subject:
+        subject, run = subject_run
+        if "EP" not in subject:
             return
 
+        print(f"  [{subject} run {run}] Applying biophysical simulation...", flush=True)
         raw_sim, raw = get_sim_eog(subject, run, return_raw=True)
 
         # EEGEyeNet has been filtered at 0.5 and 40 Hz. Need to filter
         # simulated data the same way for the EOG to fit the data
         # (the low-pass is not that important but the high-pass has a lot of impact)
-        raw_sim.filter(0.5, 40)  # Filter the simulated data as the original data have been filtered
+        raw_sim.filter(0.5, 40, verbose=False)
 
         x_sim = raw_sim.copy().get_data(picks="eeg")
         x_raw = raw.copy().get_data(picks="eeg")
@@ -34,38 +39,77 @@ def process(*args):
         x_sim_global = x_sim * optimal_alpha(x_sim, x_raw)
         x_sim_local = x_sim * optimal_alpha(x_sim, x_raw, axis=1)[:, None]
 
-        raw_sim_noise = mne.io.RawArray(x_sim_global, raw.copy().pick("eeg").info)
-        raw_sim = mne.io.RawArray(x_raw - x_sim_global, raw.copy().pick("eeg").info)
+        raw_sim_noise = mne.io.RawArray(x_sim_global, raw.copy().pick("eeg").info, verbose=False)
+        raw_sim = mne.io.RawArray(x_raw - x_sim_global, raw.copy().pick("eeg").info, verbose=False)
 
-        raw_sim_noise.resample(100).export(root + f"{subject}_{run}_noisesim.edf", overwrite=True)
-        raw_sim.resample(100).export(root + f"{subject}_{run}_sim.edf", overwrite=True)
+        raw_sim_noise.resample(100, verbose=False).export(
+            root + f"{subject}_{run}_noisesim.edf", overwrite=True, verbose=False)
+        raw_sim.resample(100, verbose=False).export(
+            root + f"{subject}_{run}_sim.edf", overwrite=True, verbose=False)
 
-        raw_sim_noise_local = mne.io.RawArray(x_sim_local, raw.copy().pick("eeg").info)
-        raw_sim_local = mne.io.RawArray(x_raw - x_sim_local, raw.copy().pick("eeg").info)
+        raw_sim_noise_local = mne.io.RawArray(
+            x_sim_local, raw.copy().pick("eeg").info, verbose=False)
+        raw_sim_local = mne.io.RawArray(
+            x_raw - x_sim_local, raw.copy().pick("eeg").info, verbose=False)
 
-        raw_sim_noise_local.resample(100).export(root + f"{subject}_{run}_noisesimlocal.edf", overwrite=True)
-        raw_sim_local.resample(100).export(root + f"{subject}_{run}_simlocal.edf", overwrite=True)
+        raw_sim_noise_local.resample(100, verbose=False).export(
+            root + f"{subject}_{run}_noisesimlocal.edf", overwrite=True, verbose=False)
+        raw_sim_local.resample(100, verbose=False).export(
+            root + f"{subject}_{run}_simlocal.edf", overwrite=True, verbose=False)
+
+        print(f"  [{subject} run {run}] Done.", flush=True)
 
     except:
         raise
 
 
 root = "processed/"
-root = "/Users/christian/Library/CloudStorage/OneDrive-UniversityofSouthCarolina/Data/eog_cleaning_study/processed/"
 
 if __name__ == "__main__":
+    import argparse
+    from functools import partial
 
-    recompute = True
+    parser = argparse.ArgumentParser(
+        description="Run biophysical simulation EOG cleaning pipeline."
+    )
+    parser.add_argument(
+        "--root",
+        default=root,
+        help="Output directory for processed EDF files (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--no-recompute",
+        dest="recompute",
+        action="store_false",
+        default=True,
+        help="Skip recordings whose output files already exist",
+    )
+    parser.add_argument(
+        "--subjects",
+        nargs="+",
+        default=None,
+        metavar="SUBJECT",
+        help="Restrict processing to these subjects (e.g. EP10 EP11)",
+    )
+    args = parser.parse_args()
+
+    root = args.root
+    recompute = args.recompute
+
     nb_processes = 5
-    Path("processed").mkdir(exist_ok=True)
+    Path(root).mkdir(exist_ok=True)
 
     runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
+    subjects = args.subjects if args.subjects else list(runs_dict.keys())
     subject_run = np.concatenate([[(subject, run)
                                    for run in runs_dict[subject]]
-                                  for subject in runs_dict])
+                                  for subject in subjects
+                                  if subject in runs_dict])
     subject_run = [(subject, run)
                    for subject, run in subject_run
                    if recompute or not Path(root + f"{subject}_{run}_noisesimlocal.edf").exists()]
 
-    p = multiprocessing.Pool(nb_processes)
-    p.map(process, subject_run)
+    with multiprocessing.Pool(nb_processes) as p:
+        list(tqdm(p.imap(partial(process, root=root), subject_run),
+                  total=len(subject_run), desc="Recordings",
+                  position=0, leave=True))
