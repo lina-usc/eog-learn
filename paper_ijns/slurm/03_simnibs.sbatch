@@ -26,6 +26,12 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "$SIMNIBS_ENV"
 
 cd "$SCRIPT_DIR"
+
+if [[ -f "leadfield_elect_only.npy" ]]; then
+    echo "[$(date '+%H:%M:%S')] leadfield_elect_only.npy already exists — skipping SimNIBS computation."
+    exit 0
+fi
+
 echo "[$(date '+%H:%M:%S')] Running biophysical forward model (SimNIBS env: $SIMNIBS_ENV)"
 
 python 1.3_eog_gen_model_2025.py
