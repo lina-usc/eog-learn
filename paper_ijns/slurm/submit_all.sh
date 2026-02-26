@@ -18,7 +18,7 @@
 #   Step  3   (SimNIBS)  ──────┘──→ Step 1.4 (Simulation)
 #             │                           │
 #             └────── (all five) ─────────┘
-#                           ↓  afterok all five
+#                           ↓  afterany all five (runs even if some subjects failed)
 #                    Step 5 (xarray aggregation)
 #                           ↓  afterok
 #                    Steps 6–9 (analysis notebooks, chained)
@@ -157,7 +157,7 @@ JID_SIM=$(sbatch "${SIM_ARGS[@]}" "$SLURM_DIR/04_sim.sbatch")
 # ---------------------------------------------------------------------------
 # Step 5 — Aggregate to xarray (waits for ALL five preceding jobs)
 # ---------------------------------------------------------------------------
-DEPS="afterok:${JID_PR}:${JID_PS}:${JID_AS}:${JID_ICA}:${JID_SIM}"
+DEPS="afterany:${JID_PR}:${JID_PS}:${JID_AS}:${JID_ICA}:${JID_SIM}"
 JID_XR=$(sbatch --parsable \
     --dependency="$DEPS" \
     --job-name="eog_xarray" \

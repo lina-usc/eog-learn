@@ -304,8 +304,10 @@ def process(subject_run, root, tmax=None):
         raw_noise.export(root + f"{subject}_{run}_noise.edf", overwrite=True, verbose=False)
         print(f"  [{subject} run {run}] Done.", flush=True)
         status = "ok"
+        return True
     except Exception:
         traceback.print_exc()
+        return False
     finally:
         _log_timing(root, subject, run, "1.1", "perrecording",
                     time.perf_counter() - t0, status)
@@ -318,19 +320,21 @@ def process_persubject(subject_run, root):
     try:
         if "EP" not in subject:
             status = "n/a"
-            return
+            return True
         print(f"  [{subject} run {run}] Training LSTM (per-subject)...", flush=True)
         result = clean_data_per_subject(subject, run)
         if result is None:
             status = "n/a"
-            return
+            return True
         raw, raw_clean, raw_noise = result
         raw_clean.export(root + f"{subject}_{run}_clean_persubject.edf", overwrite=True, verbose=False)
         raw_noise.export(root + f"{subject}_{run}_noise_persubject.edf", overwrite=True, verbose=False)
         print(f"  [{subject} run {run}] Done.", flush=True)
         status = "ok"
+        return True
     except Exception:
         traceback.print_exc()
+        return False
     finally:
         _log_timing(root, subject, run, "1.1", "persubject",
                     time.perf_counter() - t0, status)
@@ -343,7 +347,7 @@ def process_acrosssubject(subject_run, root):
     try:
         if "EP" not in subject:
             status = "n/a"
-            return
+            return True
         print(f"  [{subject} run {run}] Training LSTM (across-subject)...", flush=True)
         raw, raw_clean, raw_noise = clean_data_across_subjects(subject, run)
         raw_clean.export(
@@ -352,8 +356,10 @@ def process_acrosssubject(subject_run, root):
             root + f"{subject}_{run}_noise_acrosssubject.edf", overwrite=True, verbose=False)
         print(f"  [{subject} run {run}] Done.", flush=True)
         status = "ok"
+        return True
     except Exception:
         traceback.print_exc()
+        return False
     finally:
         _log_timing(root, subject, run, "1.1", "acrosssubject",
                     time.perf_counter() - t0, status)
@@ -417,20 +423,26 @@ if __name__ == "__main__":
         subject_run = [(s, r) for s, r in subject_run
                        if recompute or not Path(root + f"{s}_{r}_noise.edf").exists()]
         with multiprocessing.Pool(nb_processes) as p:
-            list(tqdm(p.imap(partial(process, root=root), subject_run),
-                      total=len(subject_run), desc="Recordings",
-                      position=0, leave=True))
+            results = list(tqdm(p.imap(partial(process, root=root), subject_run),
+                                total=len(subject_run), desc="Recordings",
+                                position=0, leave=True))
+        if not all(results):
+            sys.exit(1)
     elif condition == "persubject":
         subject_run = [(s, r) for s, r in subject_run
                        if recompute or not Path(
                            root + f"{s}_{r}_noise_persubject.edf").exists()]
         with multiprocessing.Pool(nb_processes) as p:
-            list(tqdm(p.imap(partial(process_persubject, root=root), subject_run),
-                      total=len(subject_run), desc="Recordings"))
+            results = list(tqdm(p.imap(partial(process_persubject, root=root), subject_run),
+                                total=len(subject_run), desc="Recordings"))
+        if not all(results):
+            sys.exit(1)
     elif condition == "acrosssubject":
         subject_run = [(s, r) for s, r in subject_run
                        if recompute or not Path(
                            root + f"{s}_{r}_noise_acrosssubject.edf").exists()]
         with multiprocessing.Pool(nb_processes) as p:
-            list(tqdm(p.imap(partial(process_acrosssubject, root=root), subject_run),
-                      total=len(subject_run), desc="Recordings"))
+            results = list(tqdm(p.imap(partial(process_acrosssubject, root=root), subject_run),
+                                total=len(subject_run), desc="Recordings"))
+        if not all(results):
+            sys.exit(1)

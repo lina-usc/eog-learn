@@ -12,7 +12,6 @@
 #SBATCH --mem=8G
 #SBATCH --time=4:00:00
 #SBATCH --output=slurm/logs/sim_%A_%a.out
-#SBATCH --error=slurm/logs/sim_%A_%a.err
 
 set -euo pipefail
 

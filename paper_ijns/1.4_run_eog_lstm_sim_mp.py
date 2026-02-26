@@ -54,7 +54,7 @@ def process(subject_run, root):
     try:
         if "EP" not in subject:
             status = "n/a"
-            return
+            return True
 
         print(f"  [{subject} run {run}] Applying biophysical simulation...", flush=True)
         raw_sim, raw = get_sim_eog(subject, run, return_raw=True)
@@ -90,9 +90,11 @@ def process(subject_run, root):
 
         print(f"  [{subject} run {run}] Done.", flush=True)
         status = "ok"
+        return True
 
     except Exception:
         traceback.print_exc()
+        return False
     finally:
         _log_timing(root, subject, run, "1.4", "",
                     time.perf_counter() - t0, status)
@@ -146,6 +148,8 @@ if __name__ == "__main__":
                    if recompute or not Path(root + f"{subject}_{run}_noisesimlocal.edf").exists()]
 
     with multiprocessing.Pool(nb_processes) as p:
-        list(tqdm(p.imap(partial(process, root=root), subject_run),
-                  total=len(subject_run), desc="Recordings",
-                  position=0, leave=True))
+        results = list(tqdm(p.imap(partial(process, root=root), subject_run),
+                            total=len(subject_run), desc="Recordings",
+                            position=0, leave=True))
+    if not all(results):
+        sys.exit(1)

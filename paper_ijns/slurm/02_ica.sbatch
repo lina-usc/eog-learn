@@ -9,7 +9,6 @@
 #SBATCH --mem=12G
 #SBATCH --time=8:00:00
 #SBATCH --output=slurm/logs/ica_%A_%a.out
-#SBATCH --error=slurm/logs/ica_%A_%a.err
 
 set -euo pipefail
 

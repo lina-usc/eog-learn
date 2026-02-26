@@ -19,7 +19,6 @@
 #SBATCH --mem=8G
 #SBATCH --time=4:00:00
 #SBATCH --output=slurm/logs/lstm_%A_%a.out
-#SBATCH --error=slurm/logs/lstm_%A_%a.err
 
 set -euo pipefail
 

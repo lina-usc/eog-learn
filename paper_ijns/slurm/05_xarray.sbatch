@@ -3,7 +3,7 @@
 # 05_xarray.sbatch — Aggregate all processed EDFs into xarray .netcdf files
 #
 # Single serial job.  Depends on ALL array jobs from Steps 1.1/1.2/1.4 finishing
-# successfully (dependency set by submit_all.sh).
+# in any state (dependency set by submit_all.sh via afterany).
 #
 # Required --export variables (set by submit_all.sh):
 #   ROOT, MODULE, VENV, SCRIPT_DIR
@@ -12,7 +12,6 @@
 #SBATCH --mem=8G
 #SBATCH --time=12:00:00
 #SBATCH --output=slurm/logs/xarray_%j.out
-#SBATCH --error=slurm/logs/xarray_%j.err
 
 set -euo pipefail
 
