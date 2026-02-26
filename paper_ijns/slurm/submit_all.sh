@@ -51,10 +51,13 @@ SIMNIBS_ENV=$(_cfg simnibs_env)
 ROOT=$(_cfg root)
 [[ "$(_cfg recompute)" == "False" ]] && RECOMPUTE_FLAG="--no-recompute" || RECOMPUTE_FLAG=""
 
+# Build --partition flag only when a partition is configured
+[[ -n "$PARTITION" ]] && _PARTITION_ARG="--partition=$PARTITION" || _PARTITION_ARG=""
+
 echo "============================================================"
 echo "  paper_ijns SLURM pipeline submission"
 echo "============================================================"
-echo "  Partition  : $PARTITION"
+echo "  Partition  : ${PARTITION:-<default>}"
 echo "  Module     : $MODULE"
 echo "  Venv       : $VENV"
 echo "  Root       : $ROOT"
@@ -92,7 +95,7 @@ JID_PR=$(sbatch --parsable \
     --array="$ARRAY" \
     --job-name="eog_lstm_pr" \
     --export=ALL,CONDITION=perrecording,ROOT="$ROOT",RECOMPUTE_FLAG="$RECOMPUTE_FLAG",$_COMMON \
-    --partition="$PARTITION" \
+    ${_PARTITION_ARG:+"$_PARTITION_ARG"} \
     --cpus-per-task=5 --mem=8G --time=1:00:00 \
     "$SLURM_DIR/01_lstm.sbatch")
 
@@ -100,7 +103,7 @@ JID_PS=$(sbatch --parsable \
     --array="$ARRAY" \
     --job-name="eog_lstm_ps" \
     --export=ALL,CONDITION=persubject,ROOT="$ROOT",RECOMPUTE_FLAG="$RECOMPUTE_FLAG",$_COMMON \
-    --partition="$PARTITION" \
+    ${_PARTITION_ARG:+"$_PARTITION_ARG"} \
     --cpus-per-task=5 --mem=10G --time=2:00:00 \
     "$SLURM_DIR/01_lstm.sbatch")
 
@@ -108,7 +111,7 @@ JID_AS=$(sbatch --parsable \
     --array="$ARRAY" \
     --job-name="eog_lstm_as" \
     --export=ALL,CONDITION=acrosssubject,ROOT="$ROOT",RECOMPUTE_FLAG="$RECOMPUTE_FLAG",$_COMMON \
-    --partition="$PARTITION" \
+    ${_PARTITION_ARG:+"$_PARTITION_ARG"} \
     --cpus-per-task=2 --mem=20G --time=6:00:00 \
     "$SLURM_DIR/01_lstm.sbatch")
 
@@ -116,7 +119,7 @@ JID_ICA=$(sbatch --parsable \
     --array="$ARRAY" \
     --job-name="eog_ica" \
     --export=ALL,ROOT="$ROOT",RECOMPUTE_FLAG="$RECOMPUTE_FLAG",$_COMMON \
-    --partition="$PARTITION" \
+    ${_PARTITION_ARG:+"$_PARTITION_ARG"} \
     --cpus-per-task=5 --mem=12G --time=2:00:00 \
     "$SLURM_DIR/02_ica.sbatch")
 
@@ -132,7 +135,7 @@ else
     JID_SIMNIBS=$(sbatch --parsable \
         --job-name="eog_simnibs" \
         --export=ALL,SIMNIBS_ENV="$SIMNIBS_ENV",$_COMMON \
-        --partition="$PARTITION" \
+        ${_PARTITION_ARG:+"$_PARTITION_ARG"} \
         --cpus-per-task=1 --mem=4G --time=1:00:00 \
         "$SLURM_DIR/03_simnibs.sbatch")
     SIM_DEP="afterok:$JID_SIMNIBS"
@@ -146,7 +149,7 @@ SIM_ARGS=(--parsable
     --array="$ARRAY"
     --job-name="eog_sim"
     --export=ALL,ROOT="$ROOT",RECOMPUTE_FLAG="$RECOMPUTE_FLAG",$_COMMON
-    --partition="$PARTITION"
+    ${_PARTITION_ARG:+"$_PARTITION_ARG"}
     --cpus-per-task=5 --mem=8G --time=1:00:00)
 [[ -n "$SIM_DEP" ]] && SIM_ARGS+=(--dependency="$SIM_DEP")
 JID_SIM=$(sbatch "${SIM_ARGS[@]}" "$SLURM_DIR/04_sim.sbatch")
@@ -159,7 +162,7 @@ JID_XR=$(sbatch --parsable \
     --dependency="$DEPS" \
     --job-name="eog_xarray" \
     --export=ALL,ROOT="$ROOT",$_COMMON \
-    --partition="$PARTITION" \
+    ${_PARTITION_ARG:+"$_PARTITION_ARG"} \
     "$SLURM_DIR/05_xarray.sbatch")
 
 # ---------------------------------------------------------------------------
@@ -169,7 +172,7 @@ JID_ANALYSIS=$(sbatch --parsable \
     --dependency="afterok:$JID_XR" \
     --job-name="eog_analysis" \
     --export=ALL,ROOT="$ROOT",$_COMMON \
-    --partition="$PARTITION" \
+    ${_PARTITION_ARG:+"$_PARTITION_ARG"} \
     "$SLURM_DIR/06_analysis.sbatch")
 
 # ---------------------------------------------------------------------------

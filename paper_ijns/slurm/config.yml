@@ -7,7 +7,9 @@
 
 # ── Cluster settings ─────────────────────────────────────────────────────────
 
-# SLURM partition (queue) to submit to
+# SLURM partition (queue) to submit to.
+# Leave blank (partition: "") to omit --partition from sbatch calls — some
+# clusters use the default partition and reject an explicit --partition flag.
 partition: AI_Center
 
 # Anaconda module to load (provides the base Python environment)
