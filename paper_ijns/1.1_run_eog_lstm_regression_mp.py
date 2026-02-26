@@ -1,6 +1,7 @@
 #!/work/co20/eog_lstm/venv_lstm/bin/python
 
 import sys
+import traceback
 import multiprocessing
 from pathlib import Path
 
@@ -274,7 +275,7 @@ def process(subject_run, root, tmax=None):
         raw_noise.export(root + f"{subject}_{run}_noise.edf", overwrite=True, verbose=False)
         print(f"  [{subject} run {run}] Done.", flush=True)
     except Exception:
-        pass
+        traceback.print_exc()
 
 
 def process_persubject(subject_run, root):
@@ -291,7 +292,7 @@ def process_persubject(subject_run, root):
         raw_noise.export(root + f"{subject}_{run}_noise_persubject.edf", overwrite=True, verbose=False)
         print(f"  [{subject} run {run}] Done.", flush=True)
     except Exception:
-        pass
+        traceback.print_exc()
 
 
 def process_acrosssubject(subject_run, root):
@@ -307,7 +308,7 @@ def process_acrosssubject(subject_run, root):
             root + f"{subject}_{run}_noise_acrosssubject.edf", overwrite=True, verbose=False)
         print(f"  [{subject} run {run}] Done.", flush=True)
     except Exception:
-        pass
+        traceback.print_exc()
 
 
 root = "processed/"
