@@ -89,10 +89,10 @@ def process(subject_run, root, tmax=None):
         # Apply the filter to match LSTM raw, then export
         raw_icanoise.filter(verbose=False, **filter_kwargs).resample(
             100, verbose=False).export(
-            root + f"{subject}_{run}_noiseica.edf", overwrite=True, verbose=False)
+            str(Path(root) / f"{subject}_{run}_noiseica.edf"), overwrite=True, verbose=False)
         raw_ica.filter(verbose=False, **filter_kwargs).resample(
             100, verbose=False).export(
-            root + f"{subject}_{run}_ica.edf", overwrite=True, verbose=False)
+            str(Path(root) / f"{subject}_{run}_ica.edf"), overwrite=True, verbose=False)
 
         print(f"  [{subject} run {run}] Done "
               f"({len(exclude_idx)} eye-blink components removed).", flush=True)
@@ -143,7 +143,7 @@ if __name__ == "__main__":
     recompute = args.recompute
 
     nb_processes = 5
-    Path(root).mkdir(exist_ok=True)
+    Path(root).mkdir(parents=True, exist_ok=True)
     _init_timing_csv(Path(root) / "timings.csv")
 
     runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
@@ -154,8 +154,11 @@ if __name__ == "__main__":
                                   if subject in runs_dict])
     subject_run = [(subject, run)
                    for subject, run in subject_run
-                   if recompute or not Path(root + f"{subject}_{run}_ica.edf").exists()]
+                   if recompute or not (Path(root) / f"{subject}_{run}_ica.edf").exists()]
 
+    if not subject_run:
+        print("WARNING: Nothing to process — all output files exist. "
+              "Pass --recompute to force reprocessing.", flush=True)
     with multiprocessing.Pool(nb_processes) as p:
         results = list(tqdm(p.imap(partial(process, root=root), subject_run),
                             total=len(subject_run), desc="Recordings",
