@@ -47,6 +47,16 @@ def _log_timing(root: str, subject: str, run, step: str, condition: str,
         pass  # timing failure is non-critical
 
 
+def _iter_progress(iterable, total, desc):
+    """tqdm in a TTY; one compact print-per-item in log files."""
+    if sys.stdout.isatty():
+        yield from tqdm(iterable, total=total, desc=desc, position=0, leave=True)
+    else:
+        for i, item in enumerate(iterable, 1):
+            yield item
+            print(f"[{desc}] {i}/{total}", flush=True)
+
+
 def process(subject_run, root):
     subject, run = subject_run
     t0 = time.perf_counter()
@@ -133,7 +143,7 @@ if __name__ == "__main__":
     root = args.root
     recompute = args.recompute
 
-    nb_processes = 5
+    nb_processes = 2
     Path(root).mkdir(parents=True, exist_ok=True)
     _init_timing_csv(Path(root) / "timings.csv")
 
@@ -150,9 +160,9 @@ if __name__ == "__main__":
     if not subject_run:
         print("WARNING: Nothing to process — all output files exist. "
               "Pass --recompute to force reprocessing.", flush=True)
-    with multiprocessing.Pool(nb_processes) as p:
-        results = list(tqdm(p.imap(partial(process, root=root), subject_run),
-                            total=len(subject_run), desc="Recordings",
-                            position=0, leave=True))
+    with multiprocessing.Pool(nb_processes, maxtasksperchild=1) as p:
+        results = list(_iter_progress(
+            p.imap(partial(process, root=root), subject_run),
+            total=len(subject_run), desc="Recordings"))
     if not all(results):
         sys.exit(1)

@@ -29,6 +29,8 @@ cd "$SCRIPT_DIR"
 
 SUBJECT=$(awk "NR==$((SLURM_ARRAY_TASK_ID + 1))" slurm/subjects.txt)
 echo "[$(date '+%H:%M:%S')] Task $SLURM_ARRAY_TASK_ID → subject=$SUBJECT  condition=$CONDITION"
+ln -sf "lstm_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}.out" \
+       "slurm/logs/lstm_${SUBJECT}_${CONDITION}.out" 2>/dev/null || true
 
 python 1.1_run_eog_lstm_regression_mp.py \
     --subjects "$SUBJECT" \

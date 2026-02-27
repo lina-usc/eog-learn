@@ -75,7 +75,8 @@ python3 - <<PYEOF > "$SLURM_DIR/subjects.txt"
 import sys
 sys.path.insert(0, "$SCRIPT_DIR")
 import eoglearn
-subjects = sorted(eoglearn.datasets.eegeyenet.get_subjects_runs().keys())
+subjects = sorted(s for s in eoglearn.datasets.eegeyenet.get_subjects_runs().keys()
+                  if s != "AA0")
 print('\n'.join(subjects))
 PYEOF
 deactivate 2>/dev/null || true
@@ -104,7 +105,7 @@ JID_PS=$(sbatch --parsable \
     --job-name="eog_lstm_ps" \
     --export=ALL,CONDITION=persubject,ROOT="$ROOT",RECOMPUTE_FLAG="$RECOMPUTE_FLAG",$_COMMON \
     ${_PARTITION_ARG:+"$_PARTITION_ARG"} \
-    --cpus-per-task=5 --mem=10G --time=8:00:00 \
+    --cpus-per-task=2 --mem=16G --time=16:00:00 \
     "$SLURM_DIR/01_lstm.sbatch")
 
 JID_AS=$(sbatch --parsable \
@@ -112,7 +113,7 @@ JID_AS=$(sbatch --parsable \
     --job-name="eog_lstm_as" \
     --export=ALL,CONDITION=acrosssubject,ROOT="$ROOT",RECOMPUTE_FLAG="$RECOMPUTE_FLAG",$_COMMON \
     ${_PARTITION_ARG:+"$_PARTITION_ARG"} \
-    --cpus-per-task=2 --mem=20G --time=24:00:00 \
+    --cpus-per-task=1 --mem=32G --time=48:00:00 \
     "$SLURM_DIR/01_lstm.sbatch")
 
 JID_ICA=$(sbatch --parsable \
@@ -150,7 +151,7 @@ SIM_ARGS=(--parsable
     --job-name="eog_sim"
     --export=ALL,ROOT="$ROOT",RECOMPUTE_FLAG="$RECOMPUTE_FLAG",$_COMMON
     ${_PARTITION_ARG:+"$_PARTITION_ARG"}
-    --cpus-per-task=5 --mem=8G --time=4:00:00)
+    --cpus-per-task=2 --mem=16G --time=8:00:00)
 [[ -n "$SIM_DEP" ]] && SIM_ARGS+=(--dependency="$SIM_DEP")
 JID_SIM=$(sbatch "${SIM_ARGS[@]}" "$SLURM_DIR/04_sim.sbatch")
 

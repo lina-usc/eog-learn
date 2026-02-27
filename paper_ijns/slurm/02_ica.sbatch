@@ -19,6 +19,8 @@ cd "$SCRIPT_DIR"
 
 SUBJECT=$(awk "NR==$((SLURM_ARRAY_TASK_ID + 1))" slurm/subjects.txt)
 echo "[$(date '+%H:%M:%S')] Task $SLURM_ARRAY_TASK_ID → subject=$SUBJECT"
+ln -sf "ica_${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}.out" \
+       "slurm/logs/ica_${SUBJECT}.out" 2>/dev/null || true
 
 python 1.2_run_eog_lstm_ica_mp.py \
     --subjects "$SUBJECT" \

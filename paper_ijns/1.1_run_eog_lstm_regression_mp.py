@@ -55,6 +55,16 @@ def _log_timing(root: str, subject: str, run, step: str, condition: str,
         pass  # timing failure is non-critical
 
 
+def _iter_progress(iterable, total, desc):
+    """tqdm in a TTY; one compact print-per-item in log files."""
+    if sys.stdout.isatty():
+        yield from tqdm(iterable, total=total, desc=desc, position=0, leave=True)
+    else:
+        for i, item in enumerate(iterable, 1):
+            yield item
+            print(f"[{desc}] {i}/{total}", flush=True)
+
+
 class EOGRegressor(nn.Module):
     def __init__(self, n_input_features, n_output_features,
                  hidden_size=64, num_layers=1, dropout=0.5):
@@ -114,7 +124,7 @@ def train_the_model(X, Y, num_epochs=1000, hidden_size=64, num_layers=1, dropout
     # Training loop
     model.train()
     for i in tqdm(range(num_epochs), desc="Training LSTM",
-                  position=pos, leave=False):
+                  position=pos, leave=False, disable=not sys.stderr.isatty()):
         # Forward pass
         outputs = model(X)
 
@@ -407,8 +417,13 @@ if __name__ == "__main__":
     root = args.root
     recompute = args.recompute
 
-    # Use fewer processes for across-subject (memory-intensive)
-    nb_processes = 2 if condition == "acrosssubject" else 5
+    # Use fewer processes for memory-intensive conditions
+    if condition == "acrosssubject":
+        nb_processes = 1   # loads all other subjects — very large memory
+    elif condition == "persubject":
+        nb_processes = 2   # loads all other runs per subject
+    else:
+        nb_processes = 5
     Path(root).mkdir(parents=True, exist_ok=True)
     _init_timing_csv(Path(root) / "timings.csv")
 
@@ -426,9 +441,9 @@ if __name__ == "__main__":
             print("WARNING: Nothing to process — all output files exist. "
                   "Pass --recompute to force reprocessing.", flush=True)
         with multiprocessing.Pool(nb_processes) as p:
-            results = list(tqdm(p.imap(partial(process, root=root), subject_run),
-                                total=len(subject_run), desc="Recordings",
-                                position=0, leave=True))
+            results = list(_iter_progress(
+                p.imap(partial(process, root=root), subject_run),
+                total=len(subject_run), desc="Recordings"))
         if not all(results):
             sys.exit(1)
     elif condition == "persubject":
@@ -439,8 +454,9 @@ if __name__ == "__main__":
             print("WARNING: Nothing to process — all output files exist. "
                   "Pass --recompute to force reprocessing.", flush=True)
         with multiprocessing.Pool(nb_processes) as p:
-            results = list(tqdm(p.imap(partial(process_persubject, root=root), subject_run),
-                                total=len(subject_run), desc="Recordings"))
+            results = list(_iter_progress(
+                p.imap(partial(process_persubject, root=root), subject_run),
+                total=len(subject_run), desc="Recordings"))
         if not all(results):
             sys.exit(1)
     elif condition == "acrosssubject":
@@ -451,7 +467,8 @@ if __name__ == "__main__":
             print("WARNING: Nothing to process — all output files exist. "
                   "Pass --recompute to force reprocessing.", flush=True)
         with multiprocessing.Pool(nb_processes) as p:
-            results = list(tqdm(p.imap(partial(process_acrosssubject, root=root), subject_run),
-                                total=len(subject_run), desc="Recordings"))
+            results = list(_iter_progress(
+                p.imap(partial(process_acrosssubject, root=root), subject_run),
+                total=len(subject_run), desc="Recordings"))
         if not all(results):
             sys.exit(1)
