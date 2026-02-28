@@ -291,6 +291,7 @@ def clean_data_across_subjects(subject, run):
 
     scaler_x, scaler_y = fit_scalers(train_raws)
     X_train, Y_train = concat_tensors(train_raws, scaler_x, scaler_y)
+    del train_raws  # free ~1.74 GB before the 1000-epoch training run
     print(f"    Training tensor shape: X={tuple(X_train.shape)}  Y={tuple(Y_train.shape)}", flush=True)
     model, _ = train_the_model(X_train, Y_train, dropout=.5, num_layers=2)
 
@@ -474,7 +475,7 @@ if __name__ == "__main__":
         if not subject_run:
             print("WARNING: Nothing to process — all output files exist. "
                   "Pass --recompute to force reprocessing.", flush=True)
-        with multiprocessing.Pool(nb_processes) as p:
+        with multiprocessing.Pool(nb_processes, maxtasksperchild=1) as p:
             results = list(_iter_progress(
                 p.imap(partial(process_acrosssubject, root=root), subject_run),
                 total=len(subject_run), desc="Recordings"))
