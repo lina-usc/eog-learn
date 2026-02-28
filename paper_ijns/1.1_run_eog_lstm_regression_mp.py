@@ -137,6 +137,9 @@ def train_the_model(X, Y, num_epochs=1000, hidden_size=64, num_layers=1, dropout
         loss.backward()
         optimizer.step()
 
+        if not sys.stderr.isatty() and (i + 1) % 100 == 0:
+            print(f"    epoch {i+1}/{num_epochs}  loss={loss.item():.6f}", flush=True)
+
     # Set model to eval mode to turn off dropout
     model.eval()
     return model, losses
@@ -273,17 +276,22 @@ def clean_data_across_subjects(subject, run):
     """Train on all runs from all other subjects; test on target subject/run."""
     runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
 
+    train_pairs = [(subj, r) for subj in runs_dict
+                   if subj != subject and "EP" in subj
+                   for r in runs_dict[subj]]
+    print(f"    Loading {len(train_pairs)} train recordings "
+          f"from {len({p[0] for p in train_pairs})} subjects ...", flush=True)
     train_raws = []
-    for subj in runs_dict:
-        if subj == subject or "EP" not in subj:
-            continue
-        for r in runs_dict[subj]:
-            train_raws.append(prep_data(subject=subj, run=r))
+    for i, (subj, r) in enumerate(train_pairs, 1):
+        train_raws.append(prep_data(subject=subj, run=r))
+        print(f"    [{i}/{len(train_pairs)}] loaded {subj} run {r}", flush=True)
 
     test_raw = prep_data(subject=subject, run=run)
+    print(f"    Loaded test recording: {subject} run {run}", flush=True)
 
     scaler_x, scaler_y = fit_scalers(train_raws)
     X_train, Y_train = concat_tensors(train_raws, scaler_x, scaler_y)
+    print(f"    Training tensor shape: X={tuple(X_train.shape)}  Y={tuple(Y_train.shape)}", flush=True)
     model, _ = train_the_model(X_train, Y_train, dropout=.5, num_layers=2)
 
     tmax = int(test_raw.times[-1])

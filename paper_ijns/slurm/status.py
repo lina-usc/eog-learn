@@ -158,9 +158,13 @@ def summarise_job(master_id: str, subjects: list[str],
         if tid is not None and tid not in task_states:
             task_states[tid] = row["state"]
 
-    # If no per-task rows found, try the whole-job rows from squeue
+    # If no per-task rows found, try the whole-job rows from squeue.
+    # SLURM may return a single compressed-range row (e.g. "12345_[0-30]")
+    # rather than individual per-task rows when all tasks share the same state.
     if not task_states:
-        whole = [r for r in squeue_rows if r["jobid"] == master_id]
+        whole = [r for r in squeue_rows
+                 if r["jobid"].startswith(master_id)
+                 and task_id_from_jobid(r["jobid"]) is None]
         if whole:
             state = whole[0]["state"]
             # Map to a per-task count (approximate — we don't know n)
