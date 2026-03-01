@@ -33,22 +33,54 @@ mne.set_log_level("WARNING")
 
 
 # ── Timeout helper for prep_data (guards against hung OSF downloads) ──────────
+#
+# Local test (macOS) confirmed: EP94 run 3 loads fine in ~8 s; SIGALRM fires
+# correctly in a simple process.  The cluster hang is NOT a broken file — it is
+# a cluster-specific stall (NFS/TCP stall, stale filelock, or OSF rate-limit)
+# that puts the operation in a non-interruptible kernel state where SIGALRM
+# cannot deliver its Python handler.
+#
+# Fix: run prep_data in a child process and hard-kill it with SIGKILL if it
+# exceeds the timeout.  SIGKILL is handled by the kernel, not by Python signal
+# machinery — it terminates the child regardless of GIL state, C-extension
+# loops, or non-interruptible waits, AND automatically releases any fcntl locks
+# (e.g., pooch's filelock) held by the dead process.
+#
+# We use get_context("fork") explicitly so the child inherits the already-loaded
+# Python/MNE state without a full reimport (fast), and to avoid the macOS
+# "spawn" recursion issue that would otherwise re-run the whole module.
 
 class _PrepTimeout(Exception):
     pass
 
 
-def _prep_data_safe(subject, run, timeout_s=600):
-    """Call prep_data() with a SIGALRM timeout; raises _PrepTimeout if hung."""
-    def _handler(signum, frame):
-        raise _PrepTimeout(f"prep_data timed out after {timeout_s}s")
-    old = signal.signal(signal.SIGALRM, _handler)
-    signal.alarm(timeout_s)
+def _load_recording(q, subject, run):
+    """Subprocess target: load one recording and put result (or exception) in q."""
     try:
-        return prep_data(subject=subject, run=run)
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old)
+        q.put(prep_data(subject=subject, run=run))
+    except Exception as exc:
+        q.put(exc)
+
+
+def _prep_data_safe(subject, run, timeout_s=120):
+    """Run prep_data in a child process; SIGKILL it if it exceeds timeout_s."""
+    ctx = multiprocessing.get_context("fork")
+    q = ctx.Queue()
+    proc = ctx.Process(target=_load_recording, args=(q, subject, run))
+    proc.start()
+    proc.join(timeout=timeout_s)
+    if proc.is_alive():
+        proc.kill()          # SIGKILL — non-maskable, terminates any kernel state
+        proc.join()
+        raise _PrepTimeout(
+            f"prep_data timed out after {timeout_s}s ({subject} run {run})"
+        )
+    if q.empty():
+        raise _PrepTimeout(f"prep_data subprocess exited without result")
+    result = q.get_nowait()
+    if isinstance(result, BaseException):
+        raise result
+    return result
 
 
 # ── Timing helpers ────────────────────────────────────────────────────────────
@@ -323,7 +355,7 @@ def clean_data_across_subjects(subject, run):
     train_raws = []
     for i, (subj, r) in enumerate(train_pairs, 1):
         try:
-            train_raws.append(_prep_data_safe(subj, r, timeout_s=600))
+            train_raws.append(_prep_data_safe(subj, r, timeout_s=120))
             print(f"    [{i}/{len(train_pairs)}] loaded {subj} run {r}", flush=True)
         except Exception as exc:
             print(f"    [{i}/{len(train_pairs)}] SKIPPED {subj} run {r}: "
