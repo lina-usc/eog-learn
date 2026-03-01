@@ -304,10 +304,18 @@ def clean_data_across_subjects(subject, run):
 
     # Pre-fetch all training files serially to avoid concurrent OSF downloads
     # across the 30+ SLURM array tasks (race conditions + rate limiting).
+    # Also detect and re-download corrupted files (truncated from prior races).
+    _MIN_MAT_BYTES = 1_000_000  # 1 MB — valid recordings are ~8–15 MB compressed
     print(f"    Pre-fetching {len(train_pairs)} training files ...", flush=True)
     for _subj, _r in train_pairs:
         try:
-            eoglearn.datasets.fetch_eegeyenet(subject=_subj, run=_r)
+            _fpath = eoglearn.datasets.fetch_eegeyenet(subject=_subj, run=_r)
+            if _fpath.exists() and _fpath.stat().st_size < _MIN_MAT_BYTES:
+                print(f"    Corrupted cache for {_subj} run {_r} "
+                      f"({_fpath.stat().st_size:,} B) — deleting and re-downloading ...",
+                      flush=True)
+                _fpath.unlink()
+                eoglearn.datasets.fetch_eegeyenet(subject=_subj, run=_r)
         except Exception as _exc:
             print(f"    Warning: pre-fetch failed for {_subj} run {_r}: {_exc}", flush=True)
     print(f"    Pre-fetch done.", flush=True)
@@ -324,15 +332,25 @@ def clean_data_across_subjects(subject, run):
     if not train_raws:
         raise RuntimeError("All training recordings failed — cannot train.")
 
-    test_raw = prep_data(subject=subject, run=run)
-    print(f"    Loaded test recording: {subject} run {run}", flush=True)
+    n_skipped = len(train_pairs) - len(train_raws)
+    if n_skipped:
+        print(f"    WARNING: {n_skipped}/{len(train_pairs)} recordings skipped — "
+              f"training on {len(train_raws)} recordings.", flush=True)
 
+    print(f"    Loading test recording: {subject} run {run} ...", flush=True)
+    test_raw = prep_data(subject=subject, run=run)
+    print(f"    Test recording loaded.", flush=True)
+
+    print(f"    Fitting scalers ...", flush=True)
     scaler_x, scaler_y = fit_scalers(train_raws)
+
+    print(f"    Building training tensors ...", flush=True)
     X_train, Y_train = concat_tensors(train_raws, scaler_x, scaler_y)
     del train_raws  # free ~1.74 GB before the 1000-epoch training run
     print(f"    Training tensor shape: X={tuple(X_train.shape)}  Y={tuple(Y_train.shape)}", flush=True)
     model, _ = train_the_model(X_train, Y_train, dropout=.5, num_layers=2)
 
+    print(f"    Evaluating on test recording ...", flush=True)
     tmax = int(test_raw.times[-1])
     test_raw.crop(tmax=tmax, include_tmax=False)
     X_test, Y_test, _, _ = format_data_for_ml(test_raw, tmax, scaler_x, scaler_y)
@@ -407,6 +425,7 @@ def process_acrosssubject(subject_run, root):
             return True
         print(f"  [{subject} run {run}] Training LSTM (across-subject)...", flush=True)
         raw, raw_clean, raw_noise = clean_data_across_subjects(subject, run)
+        print(f"  [{subject} run {run}] Exporting results ...", flush=True)
         raw_clean.export(
             str(Path(root) / f"{subject}_{run}_clean_acrosssubject.edf"), overwrite=True, verbose=False)
         raw_noise.export(
