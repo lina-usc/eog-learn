@@ -6,6 +6,7 @@ import time
 import errno
 import traceback
 import multiprocessing
+import signal
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -29,6 +30,25 @@ from tqdm import tqdm
 from filter import filter_kwargs
 
 mne.set_log_level("WARNING")
+
+
+# ── Timeout helper for prep_data (guards against hung OSF downloads) ──────────
+
+class _PrepTimeout(Exception):
+    pass
+
+
+def _prep_data_safe(subject, run, timeout_s=600):
+    """Call prep_data() with a SIGALRM timeout; raises _PrepTimeout if hung."""
+    def _handler(signum, frame):
+        raise _PrepTimeout(f"prep_data timed out after {timeout_s}s")
+    old = signal.signal(signal.SIGALRM, _handler)
+    signal.alarm(timeout_s)
+    try:
+        return prep_data(subject=subject, run=run)
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
 
 
 # ── Timing helpers ────────────────────────────────────────────────────────────
@@ -281,10 +301,28 @@ def clean_data_across_subjects(subject, run):
                    for r in runs_dict[subj]]
     print(f"    Loading {len(train_pairs)} train recordings "
           f"from {len({p[0] for p in train_pairs})} subjects ...", flush=True)
+
+    # Pre-fetch all training files serially to avoid concurrent OSF downloads
+    # across the 30+ SLURM array tasks (race conditions + rate limiting).
+    print(f"    Pre-fetching {len(train_pairs)} training files ...", flush=True)
+    for _subj, _r in train_pairs:
+        try:
+            eoglearn.datasets.fetch_eegeyenet(subject=_subj, run=_r)
+        except Exception as _exc:
+            print(f"    Warning: pre-fetch failed for {_subj} run {_r}: {_exc}", flush=True)
+    print(f"    Pre-fetch done.", flush=True)
+
     train_raws = []
     for i, (subj, r) in enumerate(train_pairs, 1):
-        train_raws.append(prep_data(subject=subj, run=r))
-        print(f"    [{i}/{len(train_pairs)}] loaded {subj} run {r}", flush=True)
+        try:
+            train_raws.append(_prep_data_safe(subj, r, timeout_s=600))
+            print(f"    [{i}/{len(train_pairs)}] loaded {subj} run {r}", flush=True)
+        except Exception as exc:
+            print(f"    [{i}/{len(train_pairs)}] SKIPPED {subj} run {r}: "
+                  f"{type(exc).__name__}: {exc}", flush=True)
+
+    if not train_raws:
+        raise RuntimeError("All training recordings failed — cannot train.")
 
     test_raw = prep_data(subject=subject, run=run)
     print(f"    Loaded test recording: {subject} run {run}", flush=True)
