@@ -55,14 +55,20 @@ def _prep_data_safe(subject, run, timeout_s=120):
     exc_box = [None]
 
     def _target():
+        os.write(2, f"[DBG] thread start {subject} run {run}\n".encode())
         try:
             result_box[0] = prep_data(subject=subject, run=run)
         except Exception as exc:
             exc_box[0] = exc
+        os.write(2, (f"[DBG] thread done  {subject} run {run} "
+                     f"ok={exc_box[0] is None}\n").encode())
 
     t = threading.Thread(target=_target, daemon=True)
     t.start()
+    os.write(2, f"[DBG] join start {subject} run {run}\n".encode())
     t.join(timeout=timeout_s)
+    os.write(2, (f"[DBG] join done  {subject} run {run} "
+                 f"alive={t.is_alive()}\n").encode())
     if t.is_alive():
         raise _PrepTimeout(
             f"prep_data timed out after {timeout_s}s ({subject} run {run})"
@@ -98,6 +104,8 @@ def _log_timing(root: str, subject: str, run, step: str, condition: str,
 
 def _iter_progress(iterable, total, desc):
     """tqdm in a TTY; one compact print-per-item in log files."""
+    _isatty = f"stdout={sys.stdout.isatty()} stderr={sys.stderr.isatty()}"
+    os.write(2, f"[DBG isatty] {_isatty}\n".encode())
     if sys.stdout.isatty():
         yield from tqdm(iterable, total=total, desc=desc, position=0, leave=True)
     else:
@@ -325,6 +333,7 @@ def clean_data_across_subjects(subject, run):
 
     train_raws = []
     for i, (subj, r) in enumerate(train_pairs, 1):
+        os.write(2, f"[DBG] before try {i} {subj} run {r}\n".encode())
         try:
             train_raws.append(_prep_data_safe(subj, r, timeout_s=120))
             print(f"    [{i}/{len(train_pairs)}] loaded {subj} run {r}", flush=True)
