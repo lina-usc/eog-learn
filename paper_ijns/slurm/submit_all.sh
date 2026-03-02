@@ -166,7 +166,7 @@ if _should_run lstm_as; then
         --job-name="eog_lstm_as" \
         --export=ALL,CONDITION=acrosssubject,ROOT="$ROOT",RECOMPUTE_FLAG="$RECOMPUTE_FLAG",$_COMMON \
         ${_PARTITION_ARG:+"$_PARTITION_ARG"} \
-        --cpus-per-task=1 --mem=32G --time=48:00:00 \
+        --cpus-per-task=1 --mem=42G --time=48:00:00 \
         "$SLURM_DIR/01_lstm.sbatch")
 fi
 
