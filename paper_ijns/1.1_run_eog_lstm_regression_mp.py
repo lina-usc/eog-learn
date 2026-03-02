@@ -32,19 +32,22 @@ from filter import filter_kwargs
 mne.set_log_level("WARNING")
 
 
-# ── Timeout helper for prep_data (guards against hung OSF downloads) ──────────
+# ── Timeout helper for prep_data ──────────────────────────────────────────────
 #
-# Local test (macOS) confirmed: EP94 run 3 loads fine in ~8 s; SIGALRM fires
-# correctly in a simple process.  The cluster hang is NOT a broken file — it is
-# a cluster-specific stall (NFS/TCP stall, stale filelock, or OSF rate-limit)
-# that puts the operation in a non-interruptible kernel state where SIGALRM
-# cannot deliver its Python handler.
+# Root cause of the cluster hang at recording 162: fork() deadlock from
+# accumulated Queue feeder threads.
 #
-# Fix: run prep_data in a child process and hard-kill it with SIGKILL if it
-# exceeds the timeout.  SIGKILL is handled by the kernel, not by Python signal
-# machinery — it terminates the child regardless of GIL state, C-extension
-# loops, or non-interruptible waits, AND automatically releases any fcntl locks
-# (e.g., pooch's filelock) held by the dead process.
+# Each call to _prep_data_safe creates a multiprocessing.Queue, which spawns an
+# internal feeder thread to write pickled data to the underlying pipe.  If the
+# Queue is not explicitly closed, that thread keeps running.  After 161
+# iterations the Pool worker accumulates 161 live feeder threads.  When
+# ctx.Process.start() calls os.fork() for the 162nd time, one of those threads
+# happens to hold a glibc malloc lock.  fork() invokes pthread_atfork handlers
+# that need the same lock → fork() deadlocks forever.  The parent never reaches
+# proc.join(), so the timeout is never evaluated and the job hangs indefinitely.
+#
+# Fix: call q.close() + q.cancel_join_thread() in a finally block so the feeder
+# thread exits after every call, preventing accumulation.
 #
 # We use get_context("fork") explicitly so the child inherits the already-loaded
 # Python/MNE state without a full reimport (fast), and to avoid the macOS
@@ -68,19 +71,23 @@ def _prep_data_safe(subject, run, timeout_s=120):
     q = ctx.Queue()
     proc = ctx.Process(target=_load_recording, args=(q, subject, run))
     proc.start()
-    proc.join(timeout=timeout_s)
-    if proc.is_alive():
-        proc.kill()          # SIGKILL — non-maskable, terminates any kernel state
-        proc.join()
-        raise _PrepTimeout(
-            f"prep_data timed out after {timeout_s}s ({subject} run {run})"
-        )
-    if q.empty():
-        raise _PrepTimeout(f"prep_data subprocess exited without result")
-    result = q.get_nowait()
-    if isinstance(result, BaseException):
-        raise result
-    return result
+    try:
+        proc.join(timeout=timeout_s)
+        if proc.is_alive():
+            proc.kill()          # SIGKILL — non-maskable, terminates any kernel state
+            proc.join()
+            raise _PrepTimeout(
+                f"prep_data timed out after {timeout_s}s ({subject} run {run})"
+            )
+        if q.empty():
+            raise _PrepTimeout(f"prep_data subprocess exited without result")
+        result = q.get_nowait()
+        if isinstance(result, BaseException):
+            raise result
+        return result
+    finally:
+        q.close()               # signal feeder thread to stop
+        q.cancel_join_thread()  # don't wait for flush — prevents thread accumulation
 
 
 # ── Timing helpers ────────────────────────────────────────────────────────────
@@ -333,24 +340,6 @@ def clean_data_across_subjects(subject, run):
                    for r in runs_dict[subj]]
     print(f"    Loading {len(train_pairs)} train recordings "
           f"from {len({p[0] for p in train_pairs})} subjects ...", flush=True)
-
-    # Pre-fetch all training files serially to avoid concurrent OSF downloads
-    # across the 30+ SLURM array tasks (race conditions + rate limiting).
-    # Also detect and re-download corrupted files (truncated from prior races).
-    _MIN_MAT_BYTES = 1_000_000  # 1 MB — valid recordings are ~8–15 MB compressed
-    print(f"    Pre-fetching {len(train_pairs)} training files ...", flush=True)
-    for _subj, _r in train_pairs:
-        try:
-            _fpath = eoglearn.datasets.fetch_eegeyenet(subject=_subj, run=_r)
-            if _fpath.exists() and _fpath.stat().st_size < _MIN_MAT_BYTES:
-                print(f"    Corrupted cache for {_subj} run {_r} "
-                      f"({_fpath.stat().st_size:,} B) — deleting and re-downloading ...",
-                      flush=True)
-                _fpath.unlink()
-                eoglearn.datasets.fetch_eegeyenet(subject=_subj, run=_r)
-        except Exception as _exc:
-            print(f"    Warning: pre-fetch failed for {_subj} run {_r}: {_exc}", flush=True)
-    print(f"    Pre-fetch done.", flush=True)
 
     train_raws = []
     for i, (subj, r) in enumerate(train_pairs, 1):
