@@ -6,7 +6,7 @@ import time
 import errno
 import traceback
 import multiprocessing
-import signal
+import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -34,60 +34,42 @@ mne.set_log_level("WARNING")
 
 # ── Timeout helper for prep_data ──────────────────────────────────────────────
 #
-# Root cause of the cluster hang at recording 162: fork() deadlock from
-# accumulated Queue feeder threads.
+# Pool workers are daemon processes.  Python forbids daemon processes from
+# spawning child processes (AssertionError: daemonic processes are not allowed
+# to have children), so a subprocess-based timeout cannot be used here.
 #
-# Each call to _prep_data_safe creates a multiprocessing.Queue, which spawns an
-# internal feeder thread to write pickled data to the underlying pipe.  If the
-# Queue is not explicitly closed, that thread keeps running.  After 161
-# iterations the Pool worker accumulates 161 live feeder threads.  When
-# ctx.Process.start() calls os.fork() for the 162nd time, one of those threads
-# happens to hold a glibc malloc lock.  fork() invokes pthread_atfork handlers
-# that need the same lock → fork() deadlocks forever.  The parent never reaches
-# proc.join(), so the timeout is never evaluated and the job hangs indefinitely.
-#
-# Fix: call q.close() + q.cancel_join_thread() in a finally block so the feeder
-# thread exits after every call, preventing accumulation.
-#
-# We use get_context("fork") explicitly so the child inherits the already-loaded
-# Python/MNE state without a full reimport (fast), and to avoid the macOS
-# "spawn" recursion issue that would otherwise re-run the whole module.
+# Fix: run prep_data in a daemon threading.Thread.  Threads can always be
+# started from daemon processes.  thread.join(timeout=N) returns after N seconds
+# even when the thread is blocked inside a C extension or non-interruptible I/O
+# — no SIGALRM signal machinery is needed.  If the thread hangs it keeps running
+# in the background, but maxtasksperchild=1 guarantees the Pool worker process
+# exits after each task, which kills all daemon threads in that process.
 
 class _PrepTimeout(Exception):
     pass
 
 
-def _load_recording(q, subject, run):
-    """Subprocess target: load one recording and put result (or exception) in q."""
-    try:
-        q.put(prep_data(subject=subject, run=run))
-    except Exception as exc:
-        q.put(exc)
-
-
 def _prep_data_safe(subject, run, timeout_s=120):
-    """Run prep_data in a child process; SIGKILL it if it exceeds timeout_s."""
-    ctx = multiprocessing.get_context("fork")
-    q = ctx.Queue()
-    proc = ctx.Process(target=_load_recording, args=(q, subject, run))
-    proc.start()
-    try:
-        proc.join(timeout=timeout_s)
-        if proc.is_alive():
-            proc.kill()          # SIGKILL — non-maskable, terminates any kernel state
-            proc.join()
-            raise _PrepTimeout(
-                f"prep_data timed out after {timeout_s}s ({subject} run {run})"
-            )
-        if q.empty():
-            raise _PrepTimeout(f"prep_data subprocess exited without result")
-        result = q.get_nowait()
-        if isinstance(result, BaseException):
-            raise result
-        return result
-    finally:
-        q.close()               # signal feeder thread to stop
-        q.cancel_join_thread()  # don't wait for flush — prevents thread accumulation
+    """Call prep_data in a daemon thread; skip the recording if it hangs."""
+    result_box = [None]
+    exc_box = [None]
+
+    def _target():
+        try:
+            result_box[0] = prep_data(subject=subject, run=run)
+        except Exception as exc:
+            exc_box[0] = exc
+
+    t = threading.Thread(target=_target, daemon=True)
+    t.start()
+    t.join(timeout=timeout_s)
+    if t.is_alive():
+        raise _PrepTimeout(
+            f"prep_data timed out after {timeout_s}s ({subject} run {run})"
+        )
+    if exc_box[0] is not None:
+        raise exc_box[0]
+    return result_box[0]
 
 
 # ── Timing helpers ────────────────────────────────────────────────────────────
