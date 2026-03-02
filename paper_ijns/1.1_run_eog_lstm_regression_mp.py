@@ -314,46 +314,81 @@ def clean_data_per_subject(subject, run):
 
 
 def clean_data_across_subjects(subject, run):
-    """Train on all runs from all other subjects; test on target subject/run."""
+    """Train on all runs from all other subjects; test on target subject/run.
+
+    Uses two-pass streaming to keep peak RAM low (~3 GB instead of ~11 GB):
+      Pass 1 — fit scalers with StandardScaler.partial_fit, one recording at a time.
+      Pass 2 — build training tensors, one recording at a time, discarding each raw
+               immediately after transformation.
+    """
     runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
 
     train_pairs = [(subj, r) for subj in runs_dict
                    if subj != subject and "EP" in subj
                    for r in runs_dict[subj]]
-    print(f"    Loading {len(train_pairs)} train recordings "
-          f"from {len({p[0] for p in train_pairs})} subjects ...", flush=True)
+    print(f"    {len(train_pairs)} train recordings from "
+          f"{len({p[0] for p in train_pairs})} subjects — streaming (2 passes).",
+          flush=True)
 
-    train_raws = []
+    # ── Pass 1: fit scalers incrementally (one raw at a time) ─────────────────
+    print("    Pass 1/2: fitting scalers ...", flush=True)
+    scaler_x = StandardScaler()
+    scaler_y = StandardScaler()
+    train_pairs_ok = []
     for i, (subj, r) in enumerate(train_pairs, 1):
         try:
-            train_raws.append(_prep_data_safe(subj, r, timeout_s=120))
-            print(f"    [{i}/{len(train_pairs)}] loaded {subj} run {r}", flush=True)
+            raw = _prep_data_safe(subj, r, timeout_s=120)
+            scaler_x.partial_fit(raw.get_data(picks=["eyetrack"]).T)
+            scaler_y.partial_fit(raw.get_data(picks="eeg").T)
+            train_pairs_ok.append((subj, r))
+            print(f"    [pass1 {i}/{len(train_pairs)}] fitted {subj} run {r}",
+                  flush=True)
+            del raw
         except Exception as exc:
-            print(f"    [{i}/{len(train_pairs)}] SKIPPED {subj} run {r}: "
+            print(f"    [pass1 {i}/{len(train_pairs)}] SKIPPED {subj} run {r}: "
                   f"{type(exc).__name__}: {exc}", flush=True)
 
-    if not train_raws:
+    if not train_pairs_ok:
         raise RuntimeError("All training recordings failed — cannot train.")
-
-    n_skipped = len(train_pairs) - len(train_raws)
+    n_skipped = len(train_pairs) - len(train_pairs_ok)
     if n_skipped:
         print(f"    WARNING: {n_skipped}/{len(train_pairs)} recordings skipped — "
-              f"training on {len(train_raws)} recordings.", flush=True)
+              f"training on {len(train_pairs_ok)} recordings.", flush=True)
 
+    # ── Pass 2: build training tensors (one raw at a time) ───────────────────
+    print("    Pass 2/2: building training tensors ...", flush=True)
+    X_list, Y_list = [], []
+    for i, (subj, r) in enumerate(train_pairs_ok, 1):
+        try:
+            raw = _prep_data_safe(subj, r, timeout_s=120)
+            tmax = int(raw.times[-1])
+            raw.crop(tmax=tmax, include_tmax=False)
+            X, Y, _, _ = format_data_for_ml(raw, tmax, scaler_x, scaler_y)
+            X_list.append(X)
+            Y_list.append(Y)
+            print(f"    [pass2 {i}/{len(train_pairs_ok)}] tensored {subj} run {r}",
+                  flush=True)
+            del raw
+        except Exception as exc:
+            print(f"    [pass2 {i}/{len(train_pairs_ok)}] SKIPPED {subj} run {r}: "
+                  f"{type(exc).__name__}: {exc}", flush=True)
+
+    if not X_list:
+        raise RuntimeError("All recordings failed in tensor pass — cannot train.")
+
+    X_train = torch.cat(X_list, dim=0)
+    Y_train = torch.cat(Y_list, dim=0)
+    del X_list, Y_list
+    print(f"    Training tensor shape: X={tuple(X_train.shape)}  "
+          f"Y={tuple(Y_train.shape)}", flush=True)
+
+    # ── Train ─────────────────────────────────────────────────────────────────
+    model, _ = train_the_model(X_train, Y_train, dropout=.5, num_layers=2)
+    del X_train, Y_train
+
+    # ── Evaluate on test recording ────────────────────────────────────────────
     print(f"    Loading test recording: {subject} run {run} ...", flush=True)
     test_raw = prep_data(subject=subject, run=run)
-    print(f"    Test recording loaded.", flush=True)
-
-    print(f"    Fitting scalers ...", flush=True)
-    scaler_x, scaler_y = fit_scalers(train_raws)
-
-    print(f"    Building training tensors ...", flush=True)
-    X_train, Y_train = concat_tensors(train_raws, scaler_x, scaler_y)
-    del train_raws  # free ~1.74 GB before the 1000-epoch training run
-    print(f"    Training tensor shape: X={tuple(X_train.shape)}  Y={tuple(Y_train.shape)}", flush=True)
-    model, _ = train_the_model(X_train, Y_train, dropout=.5, num_layers=2)
-
-    print(f"    Evaluating on test recording ...", flush=True)
     tmax = int(test_raw.times[-1])
     test_raw.crop(tmax=tmax, include_tmax=False)
     X_test, Y_test, _, _ = format_data_for_ml(test_raw, tmax, scaler_x, scaler_y)
