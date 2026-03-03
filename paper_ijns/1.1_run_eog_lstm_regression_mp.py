@@ -318,13 +318,15 @@ def clean_data_per_subject(subject, run):
     return test_raw, raw_clean, raw_noise
 
 
-def clean_data_across_subjects(subject, run, no_mp=False):
-    """Train on all runs from all other subjects; test on target subject/run.
+def clean_data_across_subjects(subject, no_mp=False):
+    """Train on all runs from all other subjects; test on all runs of test subject.
 
     Uses two-pass streaming to keep peak RAM low (~3 GB instead of ~11 GB):
       Pass 1 — fit scalers with StandardScaler.partial_fit, one recording at a time.
       Pass 2 — build training tensors, one recording at a time, discarding each raw
                immediately after transformation.
+    The model is trained once and applied to every run of the test subject.
+    Returns a dict {run: (test_raw, raw_clean, raw_noise)}.
     """
     runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
 
@@ -391,23 +393,31 @@ def clean_data_across_subjects(subject, run, no_mp=False):
     model, _ = train_the_model(X_train, Y_train, dropout=.5, num_layers=2)
     del X_train, Y_train
 
-    # ── Evaluate on test recording ────────────────────────────────────────────
-    print(f"    Loading test recording: {subject} run {run} ...", flush=True)
-    test_raw = prep_data(subject=subject, run=run)
-    tmax = int(test_raw.times[-1])
-    test_raw.crop(tmax=tmax, include_tmax=False)
-    X_test, Y_test, _, _ = format_data_for_ml(test_raw, tmax, scaler_x, scaler_y)
-    predicted_noise, denoised_output = eval_model(model, X_test, Y_test)
-
-    sfreq = int(test_raw.info['sfreq'])
-    predicted_noise = scaler_y.inverse_transform(
-        predicted_noise.reshape(tmax * sfreq, 129)).T
-    denoised_output = scaler_y.inverse_transform(
-        denoised_output.reshape(tmax * sfreq, 129)).T
-
-    raw_clean = mne.io.RawArray(denoised_output, test_raw.copy().pick("eeg").info, verbose=False)
-    raw_noise = mne.io.RawArray(predicted_noise, test_raw.copy().pick("eeg").info, verbose=False)
-    return test_raw, raw_clean, raw_noise
+    # ── Evaluate on every run of the test subject ─────────────────────────────
+    test_runs = runs_dict[subject]
+    print(f"    Evaluating on {len(test_runs)} test runs of {subject} ...", flush=True)
+    results = {}
+    for r in test_runs:
+        try:
+            print(f"    Loading test run {r} ...", flush=True)
+            test_raw = prep_data(subject=subject, run=r)
+            tmax = int(test_raw.times[-1])
+            test_raw.crop(tmax=tmax, include_tmax=False)
+            X_test, Y_test, _, _ = format_data_for_ml(test_raw, tmax, scaler_x, scaler_y)
+            predicted_noise, denoised_output = eval_model(model, X_test, Y_test)
+            sfreq = int(test_raw.info['sfreq'])
+            predicted_noise = scaler_y.inverse_transform(
+                predicted_noise.reshape(tmax * sfreq, 129)).T
+            denoised_output = scaler_y.inverse_transform(
+                denoised_output.reshape(tmax * sfreq, 129)).T
+            raw_clean = mne.io.RawArray(
+                denoised_output, test_raw.copy().pick("eeg").info, verbose=False)
+            raw_noise = mne.io.RawArray(
+                predicted_noise, test_raw.copy().pick("eeg").info, verbose=False)
+            results[r] = (test_raw, raw_clean, raw_noise)
+        except Exception as exc:
+            print(f"    FAILED test run {r}: {type(exc).__name__}: {exc}", flush=True)
+    return results
 
 
 def process(subject_run, root, tmax=None):
@@ -458,30 +468,37 @@ def process_persubject(subject_run, root):
                     time.perf_counter() - t0, status)
 
 
-def process_acrosssubject(subject_run, root, no_mp=False):
-    subject, run = subject_run
+def process_acrosssubject(subject, root, no_mp=False):
     t0 = time.perf_counter()
     status = "failed"
     try:
         if "EP" not in subject:
             status = "n/a"
             return True
-        print(f"  [{subject} run {run}] Training LSTM (across-subject)...", flush=True)
-        raw, raw_clean, raw_noise = clean_data_across_subjects(subject, run, no_mp=no_mp)
-        print(f"  [{subject} run {run}] Exporting results ...", flush=True)
-        raw_clean.export(
-            str(Path(root) / f"{subject}_{run}_clean_acrosssubject.edf"), overwrite=True, verbose=False)
-        raw_noise.export(
-            str(Path(root) / f"{subject}_{run}_noise_acrosssubject.edf"), overwrite=True, verbose=False)
-        print(f"  [{subject} run {run}] Done.", flush=True)
+        print(f"  [{subject}] Training LSTM (across-subject)...", flush=True)
+        results = clean_data_across_subjects(subject, no_mp=no_mp)
+        if not results:
+            raise RuntimeError("All test runs failed evaluation.")
+        for r, (_, raw_clean, raw_noise) in results.items():
+            print(f"  [{subject} run {r}] Exporting results ...", flush=True)
+            raw_clean.export(
+                str(Path(root) / f"{subject}_{r}_clean_acrosssubject.edf"),
+                overwrite=True, verbose=False)
+            raw_noise.export(
+                str(Path(root) / f"{subject}_{r}_noise_acrosssubject.edf"),
+                overwrite=True, verbose=False)
+            print(f"  [{subject} run {r}] Done.", flush=True)
+            _log_timing(root, subject, r, "1.1", "acrosssubject",
+                        time.perf_counter() - t0, "ok")
         status = "ok"
         return True
     except Exception:
         traceback.print_exc()
         return False
     finally:
-        _log_timing(root, subject, run, "1.1", "acrosssubject",
-                    time.perf_counter() - t0, status)
+        if status != "ok":
+            _log_timing(root, subject, "all", "1.1", "acrosssubject",
+                        time.perf_counter() - t0, status)
 
 
 root = "processed/"
@@ -585,19 +602,25 @@ if __name__ == "__main__":
         if not all(results):
             sys.exit(1)
     elif condition == "acrosssubject":
-        subject_run = [(s, r) for s, r in subject_run
-                       if recompute or not (
-                           Path(root) / f"{s}_{r}_noise_acrosssubject.edf").exists()]
-        if not subject_run:
+        subjects_todo = [
+            s for s in subjects
+            if s in runs_dict and (
+                recompute or not all(
+                    (Path(root) / f"{s}_{r}_noise_acrosssubject.edf").exists()
+                    for r in runs_dict[s]
+                )
+            )
+        ]
+        if not subjects_todo:
             print("WARNING: Nothing to process — all output files exist. "
                   "Pass --recompute to force reprocessing.", flush=True)
         if no_mp:
-            results = [process_acrosssubject(sr, root=root, no_mp=True) for sr in
-                       _iter_progress(subject_run, total=len(subject_run), desc="Recordings")]
+            results = [process_acrosssubject(s, root=root, no_mp=True) for s in
+                       _iter_progress(subjects_todo, total=len(subjects_todo), desc="Subjects")]
         else:
             with multiprocessing.Pool(nb_processes, maxtasksperchild=1) as p:
                 results = list(_iter_progress(
-                    p.imap(partial(process_acrosssubject, root=root), subject_run),
-                    total=len(subject_run), desc="Recordings"))
+                    p.imap(partial(process_acrosssubject, root=root), subjects_todo),
+                    total=len(subjects_todo), desc="Subjects"))
         if not all(results):
             sys.exit(1)
