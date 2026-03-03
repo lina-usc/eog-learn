@@ -3,12 +3,13 @@
 # 01_lstm.sbatch — LSTM regression cleaning (array job, one task per subject)
 #
 # Required --export variables (set by submit_all.sh):
-#   CONDITION    perrecording | persubject | acrosssubject
-#   ROOT         output directory
-#   RECOMPUTE_FLAG  "" or "--no-recompute"
-#   MODULE       anaconda module name
-#   VENV         path to virtual environment
-#   SCRIPT_DIR   path to paper_ijns/
+#   CONDITION      perrecording | persubject | acrosssubject
+#   ROOT           output directory
+#   RECOMPUTE_FLAG "" or "--no-recompute"
+#   NO_MP_FLAG     "" or "--no-multiprocessing" (lstm_as only)
+#   MODULE         anaconda module name
+#   VENV           path to virtual environment
+#   SCRIPT_DIR     path to paper_ijns/
 #
 # Resource defaults below are overridden per-condition by submit_all.sh:
 #   perrecording:   --cpus-per-task=5 --mem=8G   --time=1:00:00
@@ -36,6 +37,7 @@ python 1.1_run_eog_lstm_regression_mp.py \
     --subjects "$SUBJECT" \
     --condition "$CONDITION" \
     --root "$ROOT" \
-    $RECOMPUTE_FLAG
+    ${RECOMPUTE_FLAG:-} \
+    ${NO_MP_FLAG:-}
 
 echo "[$(date '+%H:%M:%S')] Done: subject=$SUBJECT  condition=$CONDITION"

@@ -4,9 +4,10 @@
 #
 # Usage
 # -----
-#   bash paper_ijns/slurm/submit_all.sh                          # submit everything
-#   bash paper_ijns/slurm/submit_all.sh --only lstm_as           # one step only
-#   bash paper_ijns/slurm/submit_all.sh --only lstm_pr lstm_ps   # multiple steps
+#   bash paper_ijns/slurm/submit_all.sh                                        # submit everything
+#   bash paper_ijns/slurm/submit_all.sh --only lstm_as                         # one step only
+#   bash paper_ijns/slurm/submit_all.sh --only lstm_pr lstm_ps                 # multiple steps
+#   bash paper_ijns/slurm/submit_all.sh --only lstm_as --no-multiprocessing    # serial in-process
 #
 # Valid --only keys:
 #   lstm_pr   LSTM perrecording   (Step 1.1)
@@ -41,6 +42,7 @@ set -euo pipefail
 # Parse arguments
 # ---------------------------------------------------------------------------
 ONLY=()
+NO_MP_FLAG=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --only)
@@ -50,9 +52,13 @@ while [[ $# -gt 0 ]]; do
                 shift
             done
             ;;
+        --no-multiprocessing)
+            NO_MP_FLAG="--no-multiprocessing"
+            shift
+            ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: $0 [--only KEY [KEY ...]]" >&2
+            echo "Usage: $0 [--only KEY [KEY ...]] [--no-multiprocessing]" >&2
             echo "Keys: lstm_pr lstm_ps lstm_as ica simnibs sim xarray analysis" >&2
             exit 1
             ;;
@@ -106,6 +112,7 @@ echo "  Module     : $MODULE"
 echo "  Venv       : $VENV"
 echo "  Root       : $ROOT"
 echo "  Recompute  : $([[ -z "$RECOMPUTE_FLAG" ]] && echo yes || echo no)"
+[[ -n "$NO_MP_FLAG"    ]] && echo "  No-MP      : yes (--no-multiprocessing)"
 [[ ${#ONLY[@]} -gt 0 ]] && echo "  Only       : ${ONLY[*]}"
 echo "============================================================"
 
@@ -164,7 +171,7 @@ if _should_run lstm_as; then
     JID_AS=$(sbatch --parsable \
         --array="$ARRAY" \
         --job-name="eog_lstm_as" \
-        --export=ALL,CONDITION=acrosssubject,ROOT="$ROOT",RECOMPUTE_FLAG="$RECOMPUTE_FLAG",$_COMMON \
+        --export=ALL,CONDITION=acrosssubject,ROOT="$ROOT",RECOMPUTE_FLAG="$RECOMPUTE_FLAG",NO_MP_FLAG="$NO_MP_FLAG",$_COMMON \
         ${_PARTITION_ARG:+"$_PARTITION_ARG"} \
         --cpus-per-task=1 --mem=24G --time=48:00:00 \
         "$SLURM_DIR/01_lstm.sbatch")
