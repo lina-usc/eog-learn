@@ -49,8 +49,13 @@ class _PrepTimeout(Exception):
     pass
 
 
-def _prep_data_safe(subject, run, timeout_s=120):
-    """Call prep_data in a daemon thread; skip the recording if it hangs."""
+def _prep_data_safe(subject, run, timeout_s=120, no_mp=False):
+    """Call prep_data in a daemon thread; skip the recording if it hangs.
+
+    When no_mp=True, calls prep_data directly (no thread, no timeout).
+    """
+    if no_mp:
+        return prep_data(subject=subject, run=run)
     result_box = [None]
     exc_box = [None]
 
@@ -313,7 +318,7 @@ def clean_data_per_subject(subject, run):
     return test_raw, raw_clean, raw_noise
 
 
-def clean_data_across_subjects(subject, run):
+def clean_data_across_subjects(subject, run, no_mp=False):
     """Train on all runs from all other subjects; test on target subject/run.
 
     Uses two-pass streaming to keep peak RAM low (~3 GB instead of ~11 GB):
@@ -337,7 +342,7 @@ def clean_data_across_subjects(subject, run):
     train_pairs_ok = []
     for i, (subj, r) in enumerate(train_pairs, 1):
         try:
-            raw = _prep_data_safe(subj, r, timeout_s=120)
+            raw = _prep_data_safe(subj, r, timeout_s=120, no_mp=no_mp)
             scaler_x.partial_fit(raw.get_data(picks=["eyetrack"]).T)
             scaler_y.partial_fit(raw.get_data(picks="eeg").T)
             train_pairs_ok.append((subj, r))
@@ -360,7 +365,7 @@ def clean_data_across_subjects(subject, run):
     X_list, Y_list = [], []
     for i, (subj, r) in enumerate(train_pairs_ok, 1):
         try:
-            raw = _prep_data_safe(subj, r, timeout_s=120)
+            raw = _prep_data_safe(subj, r, timeout_s=120, no_mp=no_mp)
             tmax = int(raw.times[-1])
             raw.crop(tmax=tmax, include_tmax=False)
             X, Y, _, _ = format_data_for_ml(raw, tmax, scaler_x, scaler_y)
@@ -453,7 +458,7 @@ def process_persubject(subject_run, root):
                     time.perf_counter() - t0, status)
 
 
-def process_acrosssubject(subject_run, root):
+def process_acrosssubject(subject_run, root, no_mp=False):
     subject, run = subject_run
     t0 = time.perf_counter()
     status = "failed"
@@ -462,7 +467,7 @@ def process_acrosssubject(subject_run, root):
             status = "n/a"
             return True
         print(f"  [{subject} run {run}] Training LSTM (across-subject)...", flush=True)
-        raw, raw_clean, raw_noise = clean_data_across_subjects(subject, run)
+        raw, raw_clean, raw_noise = clean_data_across_subjects(subject, run, no_mp=no_mp)
         print(f"  [{subject} run {run}] Exporting results ...", flush=True)
         raw_clean.export(
             str(Path(root) / f"{subject}_{run}_clean_acrosssubject.edf"), overwrite=True, verbose=False)
@@ -515,11 +520,19 @@ if __name__ == "__main__":
         metavar="SUBJECT",
         help="Restrict processing to these subjects (e.g. EP10 EP11)",
     )
+    parser.add_argument(
+        "--no-multiprocessing",
+        dest="no_mp",
+        action="store_true",
+        default=False,
+        help="Disable all multiprocessing and threading (run fully in-process)",
+    )
     args = parser.parse_args()
 
     condition = args.condition
     root = args.root
     recompute = args.recompute
+    no_mp = args.no_mp
 
     # Use fewer processes for memory-intensive conditions
     if condition == "acrosssubject":
@@ -544,10 +557,14 @@ if __name__ == "__main__":
         if not subject_run:
             print("WARNING: Nothing to process — all output files exist. "
                   "Pass --recompute to force reprocessing.", flush=True)
-        with multiprocessing.Pool(nb_processes) as p:
-            results = list(_iter_progress(
-                p.imap(partial(process, root=root), subject_run),
-                total=len(subject_run), desc="Recordings"))
+        if no_mp:
+            results = [process(sr, root=root) for sr in
+                       _iter_progress(subject_run, total=len(subject_run), desc="Recordings")]
+        else:
+            with multiprocessing.Pool(nb_processes) as p:
+                results = list(_iter_progress(
+                    p.imap(partial(process, root=root), subject_run),
+                    total=len(subject_run), desc="Recordings"))
         if not all(results):
             sys.exit(1)
     elif condition == "persubject":
@@ -557,10 +574,14 @@ if __name__ == "__main__":
         if not subject_run:
             print("WARNING: Nothing to process — all output files exist. "
                   "Pass --recompute to force reprocessing.", flush=True)
-        with multiprocessing.Pool(nb_processes) as p:
-            results = list(_iter_progress(
-                p.imap(partial(process_persubject, root=root), subject_run),
-                total=len(subject_run), desc="Recordings"))
+        if no_mp:
+            results = [process_persubject(sr, root=root) for sr in
+                       _iter_progress(subject_run, total=len(subject_run), desc="Recordings")]
+        else:
+            with multiprocessing.Pool(nb_processes) as p:
+                results = list(_iter_progress(
+                    p.imap(partial(process_persubject, root=root), subject_run),
+                    total=len(subject_run), desc="Recordings"))
         if not all(results):
             sys.exit(1)
     elif condition == "acrosssubject":
@@ -570,9 +591,13 @@ if __name__ == "__main__":
         if not subject_run:
             print("WARNING: Nothing to process — all output files exist. "
                   "Pass --recompute to force reprocessing.", flush=True)
-        with multiprocessing.Pool(nb_processes, maxtasksperchild=1) as p:
-            results = list(_iter_progress(
-                p.imap(partial(process_acrosssubject, root=root), subject_run),
-                total=len(subject_run), desc="Recordings"))
+        if no_mp:
+            results = [process_acrosssubject(sr, root=root, no_mp=True) for sr in
+                       _iter_progress(subject_run, total=len(subject_run), desc="Recordings")]
+        else:
+            with multiprocessing.Pool(nb_processes, maxtasksperchild=1) as p:
+                results = list(_iter_progress(
+                    p.imap(partial(process_acrosssubject, root=root), subject_run),
+                    total=len(subject_run), desc="Recordings"))
         if not all(results):
             sys.exit(1)
