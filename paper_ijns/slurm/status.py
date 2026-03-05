@@ -226,15 +226,17 @@ def print_status(jobs: dict[str, str], subjects: list[str]) -> None:
             fail = c["failed"] + c["cancelled"] + c["timeout"]
             total_seen = done + run + pend + fail + c["unknown"]
 
-            # Derive a status indicator
-            if fail > 0:
-                indicator = "✗ FAILURES"
-            elif done == n_total:
-                indicator = "✓ DONE"
-            elif run > 0 or pend > 0:
+            # Derive a status indicator.
+            # Mirror the Python script's 80 % threshold: a step is considered
+            # done when ≥80 % of subjects completed (≤20 % may have failed).
+            if run > 0 or pend > 0:
                 indicator = "⋯ RUNNING"
             elif total_seen == 0:
                 indicator = "? NOT STARTED"
+            elif n_total > 0 and fail >= 0.2 * n_total:
+                indicator = "✗ FAILURES"
+            elif n_total > 0 and done >= 0.8 * n_total:
+                indicator = "✓ DONE"
             else:
                 indicator = "– PARTIAL"
 

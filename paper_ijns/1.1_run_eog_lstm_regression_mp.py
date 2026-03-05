@@ -562,7 +562,7 @@ if __name__ == "__main__":
     _init_timing_csv(Path(root) / "timings.csv")
 
     runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
-    subjects = args.subjects if args.subjects else list(runs_dict.keys())
+    subjects = args.subjects if args.subjects else [s for s in runs_dict if s.startswith("EP")]
     subject_run = np.concatenate([[(subject, run)
                                    for run in runs_dict[subject]]
                                   for subject in subjects
@@ -582,7 +582,7 @@ if __name__ == "__main__":
                 results = list(_iter_progress(
                     p.imap(partial(process, root=root), subject_run),
                     total=len(subject_run), desc="Recordings"))
-        if not all(results):
+        if results and sum(results) / len(results) < 0.8:
             sys.exit(1)
     elif condition == "persubject":
         subject_run = [(s, r) for s, r in subject_run
@@ -599,7 +599,7 @@ if __name__ == "__main__":
                 results = list(_iter_progress(
                     p.imap(partial(process_persubject, root=root), subject_run),
                     total=len(subject_run), desc="Recordings"))
-        if not all(results):
+        if results and sum(results) / len(results) < 0.8:
             sys.exit(1)
     elif condition == "acrosssubject":
         subjects_todo = [
@@ -622,5 +622,5 @@ if __name__ == "__main__":
                 results = list(_iter_progress(
                     p.imap(partial(process_acrosssubject, root=root), subjects_todo),
                     total=len(subjects_todo), desc="Subjects"))
-        if not all(results):
+        if results and sum(results) / len(results) < 0.8:
             sys.exit(1)

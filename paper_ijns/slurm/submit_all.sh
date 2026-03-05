@@ -128,7 +128,7 @@ import sys
 sys.path.insert(0, "$SCRIPT_DIR")
 import eoglearn
 subjects = sorted(s for s in eoglearn.datasets.eegeyenet.get_subjects_runs().keys()
-                  if s != "AA0")
+                  if s.startswith("EP"))
 print('\n'.join(subjects))
 PYEOF
 deactivate 2>/dev/null || true
