@@ -1,95 +1,59 @@
-import marimo
+#!/usr/bin/env python3
+"""2_LSTM_compute_xr.py — Aggregate processed EDF files into xarray .netcdf files.
 
-__generated_with = "0.10.0"
-app = marimo.App(width="medium")
+Reads all *_clean.edf / *_noise.edf files produced by the pipeline scripts and
+writes four .netcdf files to the same directory:
+
+    snr.netcdf, topo_erp.netcdf, et_signals.netcdf
+    eeg_signals.netcdf, topo_raw.netcdf
+    (and *_diff.netcdf counterparts for saccade-direction-locked analysis)
+
+Prerequisites: the following scripts must have been run first:
+    1.1_run_eog_lstm_regression_mp.py
+    1.2_run_eog_lstm_ica_mp.py
+    1.4_run_eog_lstm_sim_mp.py
+
+Usage
+-----
+    python paper_ijns/2_LSTM_compute_xr.py --root /path/to/processed
+    EOG_PROCESSED_PATH=/path/to/processed python paper_ijns/2_LSTM_compute_xr.py
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from analyses import compute_et_xarrays, compute_erp_xarrays
 
 
-@app.cell
-def __():
-    import marimo as mo
-    return (mo,)
-
-
-@app.cell
-def __():
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent))
-    from analyses import compute_et_xarrays, compute_erp_xarrays
-    return Path, compute_erp_xarrays, compute_et_xarrays, sys
-
-
-@app.cell
-def __(mo):
-    mo.md(
-        """
-        # LSTM Compute xarray Datasets
-
-        Aggregates all processed EDF files (produced by the pipeline scripts) into
-        xarray `.netcdf` files for downstream analysis.
-
-        **Prerequisites:** the following scripts must have been run first:
-        - `1.1_run_eog_lstm_regression_mp.py`
-        - `1.2_run_eog_lstm_ica_mp.py`
-        - `1.4_run_eog_lstm_sim_mp.py`
-        """
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Aggregate processed EDF files into xarray .netcdf files."
     )
-    return ()
-
-
-@app.cell
-def __(mo):
-    import os as _os
-    path_input = mo.ui.text(
-        value=_os.environ.get("EOG_PROCESSED_PATH", "processed"),
-        label="Path to processed data directory (containing *_clean.edf files)",
-        full_width=True,
+    parser.add_argument(
+        "--root",
+        default=os.environ.get("EOG_PROCESSED_PATH", "processed"),
+        help="Path to processed data directory containing *_clean.edf files "
+             "(default: $EOG_PROCESSED_PATH or 'processed')",
     )
-    path_input
-    return (path_input,)
+    args = parser.parse_args()
+    root = args.root
 
+    print(f"Input directory: {root}", flush=True)
 
-@app.cell
-def __(mo):
-    mo.md("## Standard epoching (stimulus-locked)")
-    return ()
+    print("Computing standard (stimulus-locked) xarrays ...", flush=True)
+    compute_et_xarrays(root, diff=False)
+    compute_erp_xarrays(root, diff=False)
 
+    print("Computing differential (saccade-direction-locked) xarrays ...", flush=True)
+    compute_et_xarrays(root, diff=True)
+    compute_erp_xarrays(root, diff=True)
 
-@app.cell
-def __(compute_et_xarrays, path_input):
-    snr_xr, topo_ev_xr, et_signals_xr = compute_et_xarrays(
-        path_input.value, diff=False
-    )
-    return et_signals_xr, snr_xr, topo_ev_xr
-
-
-@app.cell
-def __(compute_erp_xarrays, path_input):
-    eeg_signals_xr, topo_xr = compute_erp_xarrays(path_input.value, diff=False)
-    return eeg_signals_xr, topo_xr
-
-
-@app.cell
-def __(mo):
-    mo.md("## Differential epoching (saccade-direction-locked)")
-    return ()
-
-
-@app.cell
-def __(compute_et_xarrays, path_input):
-    snr_xr_diff, topo_ev_xr_diff, et_signals_xr_diff = compute_et_xarrays(
-        path_input.value, diff=True
-    )
-    return et_signals_xr_diff, snr_xr_diff, topo_ev_xr_diff
-
-
-@app.cell
-def __(compute_erp_xarrays, path_input):
-    eeg_signals_xr_diff, topo_xr_diff = compute_erp_xarrays(
-        path_input.value, diff=True
-    )
-    return eeg_signals_xr_diff, topo_xr_diff
+    print("Done.", flush=True)
 
 
 if __name__ == "__main__":
-    app.run()
+    main()

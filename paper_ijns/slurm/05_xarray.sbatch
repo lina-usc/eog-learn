@@ -20,9 +20,8 @@ source "$VENV/bin/activate"
 
 cd "$SCRIPT_DIR"
 
-export EOG_PROCESSED_PATH="$ROOT"
 echo "[$(date '+%H:%M:%S')] Aggregating processed EDF files from: $ROOT"
 
-python 2_LSTM_compute_xr.py
+python 2_LSTM_compute_xr.py --root "$ROOT"
 
 echo "[$(date '+%H:%M:%S')] Done. netcdf files written to $SCRIPT_DIR"
