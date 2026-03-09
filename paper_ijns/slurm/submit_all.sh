@@ -135,7 +135,10 @@ deactivate 2>/dev/null || true
 
 N=$(wc -l < "$SLURM_DIR/subjects.txt")
 ARRAY="0-$((N - 1))"
-echo "  Found $N subjects → array range $ARRAY"
+if _should_run lstm_pr || _should_run lstm_ps || _should_run lstm_as || \
+   _should_run ica || _should_run sim; then
+    echo "  Found $N subjects → array range $ARRAY"
+fi
 echo ""
 
 # Common --export base (each sbatch gets extra vars appended)
@@ -149,7 +152,9 @@ JID_XR_PR="" JID_XR_PS="" JID_XR_AS="" JID_ANALYSIS=""
 _dep_afterany() {
     local ids=() jid
     for jid in "$@"; do [[ -n "$jid" ]] && ids+=("$jid"); done
-    [[ ${#ids[@]} -gt 0 ]] && echo "afterany:$(IFS=:; echo "${ids[*]}")"
+    if [[ ${#ids[@]} -gt 0 ]]; then
+        echo "afterany:$(IFS=:; echo "${ids[*]}")"
+    fi
 }
 
 # ---------------------------------------------------------------------------
