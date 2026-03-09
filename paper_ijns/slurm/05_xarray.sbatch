@@ -32,6 +32,6 @@ TASK=${TASKS[$SLURM_ARRAY_TASK_ID]}
 
 echo "[$(date '+%H:%M:%S')] Task $TASK — reading EDF files from: $ROOT"
 
-python 2_LSTM_compute_xr.py --root "$ROOT" --task "$TASK" --condition "$CONDITION" ${RECOMPUTE_FLAG}
+python 2_LSTM_compute_xr.py --root "$ROOT" --task "$TASK" --condition "$CONDITION" ${RECOMPUTE_FLAG:-}
 
 echo "[$(date '+%H:%M:%S')] Task $TASK done. netcdf written to $SCRIPT_DIR"
