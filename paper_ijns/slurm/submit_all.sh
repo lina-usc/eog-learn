@@ -142,7 +142,15 @@ echo ""
 _COMMON="MODULE=$MODULE,VENV=$VENV,SCRIPT_DIR=$SCRIPT_DIR"
 
 # Initialise all job-ID variables so they're always defined
-JID_PR="" JID_PS="" JID_AS="" JID_ICA="" JID_SIMNIBS="" JID_SIM="" JID_XR="" JID_ANALYSIS=""
+JID_PR="" JID_PS="" JID_AS="" JID_ICA="" JID_SIMNIBS="" JID_SIM=""
+JID_XR_PR="" JID_XR_PS="" JID_XR_AS="" JID_ANALYSIS=""
+
+# Build "afterany:id1:id2:..." from non-empty job IDs
+_dep_afterany() {
+    local ids=() jid
+    for jid in "$@"; do [[ -n "$jid" ]] && ids+=("$jid"); done
+    [[ ${#ids[@]} -gt 0 ]] && echo "afterany:$(IFS=:; echo "${ids[*]}")"
+}
 
 # ---------------------------------------------------------------------------
 # Steps 1.1 × 3  +  1.2 — submitted with no inter-step dependencies
@@ -222,21 +230,31 @@ if _should_run sim; then
 fi
 
 # ---------------------------------------------------------------------------
-# Step 5 — Aggregate to xarray (waits for all submitted preceding jobs)
+# Step 5 — Aggregate to xarray (3 jobs, one per LSTM condition)
+#   Each depends only on its LSTM condition job + ICA + sim.
 # ---------------------------------------------------------------------------
 if _should_run xarray; then
-    XARRAY_DEP_JIDS=()
-    for _jid in "$JID_PR" "$JID_PS" "$JID_AS" "$JID_ICA" "$JID_SIM"; do
-        [[ -n "$_jid" ]] && XARRAY_DEP_JIDS+=("$_jid")
+    for _cond_key in pr ps as; do
+        case "$_cond_key" in
+            pr) _cond=perrecording;  _lstm_jid="$JID_PR" ;;
+            ps) _cond=persubject;    _lstm_jid="$JID_PS" ;;
+            as) _cond=acrosssubject; _lstm_jid="$JID_AS" ;;
+        esac
+        _dep=$(_dep_afterany "$_lstm_jid" "$JID_ICA" "$JID_SIM")
+        _XR_ARGS=(--parsable --array=0-3
+            --job-name="eog_xarray_${_cond_key}"
+            --export=ALL,ROOT="$ROOT",CONDITION="$_cond",$_COMMON
+            ${_PARTITION_ARG:+"$_PARTITION_ARG"}
+            --mem=8G --time=6:00:00)
+        [[ -n "$_dep" ]] && _XR_ARGS+=(--dependency="$_dep")
+        _jid=$(sbatch "${_XR_ARGS[@]}" "$SLURM_DIR/05_xarray.sbatch")
+        case "$_cond_key" in
+            pr) JID_XR_PR="$_jid" ;;
+            ps) JID_XR_PS="$_jid" ;;
+            as) JID_XR_AS="$_jid" ;;
+        esac
+        printf "  Xarray %-14s %s\n" "${_cond}:" "$_jid"
     done
-    XARRAY_ARGS=(--parsable
-        --job-name="eog_xarray"
-        --export=ALL,ROOT="$ROOT",$_COMMON
-        ${_PARTITION_ARG:+"$_PARTITION_ARG"})
-    if [[ ${#XARRAY_DEP_JIDS[@]} -gt 0 ]]; then
-        XARRAY_ARGS+=(--dependency="afterany:$(IFS=:; echo "${XARRAY_DEP_JIDS[*]}")")
-    fi
-    JID_XR=$(sbatch "${XARRAY_ARGS[@]}" "$SLURM_DIR/05_xarray.sbatch")
 fi
 
 # ---------------------------------------------------------------------------
@@ -247,8 +265,9 @@ if _should_run analysis; then
         --job-name="eog_analysis"
         --export=ALL,ROOT="$ROOT",$_COMMON
         ${_PARTITION_ARG:+"$_PARTITION_ARG"})
-    # Depend on xarray only if it was submitted in this run
-    [[ -n "$JID_XR" ]] && ANALYSIS_ARGS+=(--dependency="afterok:$JID_XR")
+    # Depend on all xarray jobs submitted in this run
+    _XR_DEP=$(_dep_afterany "$JID_XR_PR" "$JID_XR_PS" "$JID_XR_AS")
+    [[ -n "$_XR_DEP" ]] && ANALYSIS_ARGS+=(--dependency="${_XR_DEP/afterany/afterok}")
     JID_ANALYSIS=$(sbatch "${ANALYSIS_ARGS[@]}" "$SLURM_DIR/06_analysis.sbatch")
 fi
 
@@ -257,14 +276,16 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "Submitted pipeline:"
-[[ -n "$JID_PR"       ]] && printf "  %-30s %s\n" "LSTM perrecording:"    "$JID_PR"
-[[ -n "$JID_PS"       ]] && printf "  %-30s %s\n" "LSTM persubject:"      "$JID_PS"
-[[ -n "$JID_AS"       ]] && printf "  %-30s %s\n" "LSTM acrosssubject:"   "$JID_AS"
-[[ -n "$JID_ICA"      ]] && printf "  %-30s %s\n" "ICA + ICLabel:"        "$JID_ICA"
-[[ -n "$JID_SIMNIBS"  ]] && printf "  %-30s %s\n" "SimNIBS fwd model:"    "$JID_SIMNIBS"
-[[ -n "$JID_SIM"      ]] && printf "  %-30s %s\n" "Biophysical sim:"      "$JID_SIM"
-[[ -n "$JID_XR"       ]] && printf "  %-30s %s\n" "Xarray aggregation:"   "$JID_XR"
-[[ -n "$JID_ANALYSIS" ]] && printf "  %-30s %s\n" "Analysis (Steps 6–9):" "$JID_ANALYSIS"
+[[ -n "$JID_PR"       ]] && printf "  %-30s %s\n" "LSTM perrecording:"       "$JID_PR"
+[[ -n "$JID_PS"       ]] && printf "  %-30s %s\n" "LSTM persubject:"         "$JID_PS"
+[[ -n "$JID_AS"       ]] && printf "  %-30s %s\n" "LSTM acrosssubject:"      "$JID_AS"
+[[ -n "$JID_ICA"      ]] && printf "  %-30s %s\n" "ICA + ICLabel:"           "$JID_ICA"
+[[ -n "$JID_SIMNIBS"  ]] && printf "  %-30s %s\n" "SimNIBS fwd model:"       "$JID_SIMNIBS"
+[[ -n "$JID_SIM"      ]] && printf "  %-30s %s\n" "Biophysical sim:"         "$JID_SIM"
+[[ -n "$JID_XR_PR"    ]] && printf "  %-30s %s\n" "Xarray perrecording:"     "$JID_XR_PR"
+[[ -n "$JID_XR_PS"    ]] && printf "  %-30s %s\n" "Xarray persubject:"       "$JID_XR_PS"
+[[ -n "$JID_XR_AS"    ]] && printf "  %-30s %s\n" "Xarray acrosssubject:"    "$JID_XR_AS"
+[[ -n "$JID_ANALYSIS" ]] && printf "  %-30s %s\n" "Analysis (Steps 6–9):"   "$JID_ANALYSIS"
 echo ""
 echo "Monitor with:  squeue -u \$USER"
 echo "Logs in:       $SLURM_DIR/logs/"
@@ -284,10 +305,12 @@ new_ids = {k: v for k, v in {
     'lstm_ps':  '${JID_PS}',
     'lstm_as':  '${JID_AS}',
     'ica':      '${JID_ICA}',
-    'sim':      '${JID_SIM}',
-    'simnibs':  '${JID_SIMNIBS}',
-    'xarray':   '${JID_XR}',
-    'analysis': '${JID_ANALYSIS}',
+    'sim':       '${JID_SIM}',
+    'simnibs':   '${JID_SIMNIBS}',
+    'xarray_pr': '${JID_XR_PR}',
+    'xarray_ps': '${JID_XR_PS}',
+    'xarray_as': '${JID_XR_AS}',
+    'analysis':  '${JID_ANALYSIS}',
 }.items() if v}
 
 existing.update(new_ids)

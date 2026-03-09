@@ -26,18 +26,21 @@ SUBJECTS_FILE = SCRIPT_DIR / "subjects.txt"
 
 # Map job key → human label
 JOB_LABELS: dict[str, str] = {
-    "lstm_pr":  "LSTM perrecording  (Step 1.1)",
-    "lstm_ps":  "LSTM persubject    (Step 1.1)",
-    "lstm_as":  "LSTM acrosssubject (Step 1.1)",
-    "ica":      "ICA + ICLabel      (Step 1.2)",
-    "simnibs":  "SimNIBS fwd model  (Step 1.3)",
-    "sim":      "Biophysical sim    (Step 1.4)",
-    "xarray":   "Xarray aggregation (Step 5)",
-    "analysis": "Analysis (Steps 6–9)",
+    "lstm_pr":   "LSTM perrecording    (Step 1.1)",
+    "lstm_ps":   "LSTM persubject      (Step 1.1)",
+    "lstm_as":   "LSTM acrosssubject   (Step 1.1)",
+    "ica":       "ICA + ICLabel        (Step 1.2)",
+    "simnibs":   "SimNIBS fwd model    (Step 1.3)",
+    "sim":       "Biophysical sim      (Step 1.4)",
+    "xarray_pr": "Xarray perrecording  (Step 5)",
+    "xarray_ps": "Xarray persubject    (Step 5)",
+    "xarray_as": "Xarray acrosssubject (Step 5)",
+    "analysis":  "Analysis (Steps 6–9)",
 }
 
-# Which jobs are array jobs (have individual tasks per subject)
-ARRAY_JOBS = {"lstm_pr", "lstm_ps", "lstm_as", "ica", "sim"}
+# Which jobs are array jobs (have individual tasks per subject/condition)
+ARRAY_JOBS = {"lstm_pr", "lstm_ps", "lstm_as", "ica", "sim",
+              "xarray_pr", "xarray_ps", "xarray_as"}
 
 
 def load_jobs(path: Path) -> dict[str, str]:
@@ -215,10 +218,16 @@ def print_status(jobs: dict[str, str], subjects: list[str]) -> None:
             continue
 
         is_array = key in ARRAY_JOBS
-        n_total = len(subjects) if (is_array and subjects) else 1
+        # xarray jobs are 4-task arrays (et/erp × standard/diff), not per-subject
+        if key in {"xarray_pr", "xarray_ps", "xarray_as"}:
+            n_total = 4
+            task_labels = ["et", "erp", "et_diff", "erp_diff"]
+        else:
+            n_total = len(subjects) if (is_array and subjects) else 1
+            task_labels = subjects
 
         if is_array:
-            summary = summarise_job(master_id, subjects, squeue_rows, sacct_rows)
+            summary = summarise_job(master_id, task_labels, squeue_rows, sacct_rows)
             c = summary["counts"]
             done = c["completed"]
             run = c["running"]

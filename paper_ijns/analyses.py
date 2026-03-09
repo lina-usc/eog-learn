@@ -3,7 +3,7 @@ from mne.io import BaseRaw
 from mne.preprocessing.eyetracking import set_channel_types_eyetrack
 import numpy as np
 import pandas as pd
-from tqdm.notebook import tqdm
+from tqdm.auto import tqdm
 from pathlib import Path
 from itertools import product
 import eoglearn
@@ -17,6 +17,18 @@ from eoglearn.models.utils import optimal_alpha
 ET_MAPPING = {"L-GAZE-X": ('eyegaze', 'px', 'left', 'x'),
               "L-GAZE-Y": ("eyegaze", "px", "left", "y"),
               "L-AREA": ("pupil", "au", "left")}
+
+# LSTM clean/noise kind names per training condition
+_LSTM_KINDS = {
+    "perrecording":  ("clean",),
+    "persubject":    ("clean_persubject",),
+    "acrosssubject": ("clean_acrosssubject",),
+}
+_LSTM_NOISE_KINDS = {
+    "perrecording":  ("noise",),
+    "persubject":    ("noise_persubject",),
+    "acrosssubject": ("noise_acrosssubject",),
+}
 
 
 def get_epochs(raw, events, event_id, baseline=(None, 0), verbose=False):
@@ -77,9 +89,17 @@ def get_insts(fname_clean, event_list=None, diff=False, format="mne",
     raw = {}
     nave = {}
 
+    _OPTIONAL_KINDS = frozenset({
+        "clean_persubject", "clean_acrosssubject",
+        "noise_persubject", "noise_acrosssubject",
+    })
     for kind in ["original", "clean", "noise", "ica", "sim", "noiseica",
-                 "noisesim", "simlocal", "noisesimlocal"]:
+                 "noisesim", "simlocal", "noisesimlocal",
+                 "clean_persubject", "clean_acrosssubject",
+                 "noise_persubject", "noise_acrosssubject"]:
         fname = Path(str(fname_clean).replace("clean.", kind + "."))
+        if kind in _OPTIONAL_KINDS and not fname.exists():
+            continue
 
         raw[kind] = mne.io.read_raw_edf(fname, verbose=False)
 
@@ -210,9 +230,10 @@ def get_snrs(evoked, event_id,
     return pd.concat(dfs), {key: pd.concat(dfs_topo[key]) for key in dfs_topo}
 
 
-def compute_et_xarrays(path="processed", diff=False, nb_files=None, dryrun=False):
-
-    kinds = ["clean", "ica", "sim", "simlocal"]
+def compute_et_xarrays(path="processed", diff=False, nb_files=None,
+                        dryrun=False, lstm_condition="perrecording"):
+    lstm_kinds = list(_LSTM_KINDS[lstm_condition])
+    kinds = lstm_kinds + ["ica", "sim", "simlocal"]
     snr_dfs = []
     et_signals_dfs = []
     topo_ev_dfs = {(time, kind): []
@@ -231,13 +252,14 @@ def compute_et_xarrays(path="processed", diff=False, nb_files=None, dryrun=False
                                     diff=diff, adjust_for_RT=True)
 
         for event_id in evoked_eye:
-            df, topo_ev = get_snrs(evoked, event_id)
+            present_kinds = tuple(k for k in kinds if k in evoked)
+            df, topo_ev = get_snrs(evoked, event_id, kinds=present_kinds)
             df["subject"], df["run"] = run, subject
             snr_dfs.append(df)
 
-            for key in topo_ev_dfs:
-                topo_ev[key]["subject"], topo_ev[key]["run"] = run, subject
-                topo_ev_dfs[key].append(topo_ev[key])
+            for key, df_topo in topo_ev.items():
+                df_topo["subject"], df_topo["run"] = run, subject
+                topo_ev_dfs[key].append(df_topo)
 
             ev_eye = evoked_eye[event_id].get_data()
             df = pd.DataFrame({
@@ -256,7 +278,8 @@ def compute_et_xarrays(path="processed", diff=False, nb_files=None, dryrun=False
             "Ensure Steps 1–4 have been run successfully."
         )
     snr_df = pd.concat(snr_dfs)
-    topo_ev_df = {key: pd.concat(topo_ev_dfs[key]) for key in topo_ev_dfs}
+    topo_ev_df = {key: pd.concat(topo_ev_dfs[key])
+                  for key in topo_ev_dfs if topo_ev_dfs[key]}
 
     snr_xr = snr_df.melt(id_vars=["approach", "condition", "event_id",
                                   "subject", "run"],
@@ -265,10 +288,8 @@ def compute_et_xarrays(path="processed", diff=False, nb_files=None, dryrun=False
                                "subject", "run", "ch_name"])\
                    .to_xarray()
     if not dryrun:
-        if diff:
-            snr_xr.to_netcdf("snr_diff.netcdf")
-        else:
-            snr_xr.to_netcdf("snr.netcdf")
+        suffix = f"_{lstm_condition}" + ("_diff" if diff else "")
+        snr_xr.to_netcdf(f"snr{suffix}.netcdf")
 
     for condition, kind in topo_ev_df:
         topo_ev_df[(condition, kind)]["condition"] = condition
@@ -283,28 +304,25 @@ def compute_et_xarrays(path="processed", diff=False, nb_files=None, dryrun=False
                    .to_xarray()
 
     if not dryrun:
-        if diff:
-            topo_ev_xr.to_netcdf("topo_erp_diff.netcdf")
-        else:
-            topo_ev_xr.to_netcdf("topo_erp.netcdf")
+        topo_ev_xr.to_netcdf(f"topo_erp{suffix}.netcdf")
 
     et_signals_df = pd.concat(et_signals_dfs)
     et_signals_xr = et_signals_df.set_index(["times", "ch_name", "subject",
                                              "run", "event_id"]).to_xarray()
 
     if not dryrun:
-        if diff:
-            et_signals_xr.to_netcdf("et_signals_diff.netcdf")
-        else:
-            et_signals_xr.to_netcdf("et_signals.netcdf")
+        et_signals_xr.to_netcdf(f"et_signals{suffix}.netcdf")
 
     return snr_xr, topo_ev_xr, et_signals_xr
 
 
-def compute_erp_xarrays(path="processed", diff=False, nb_files=None, dryrun=False):
+def compute_erp_xarrays(path="processed", diff=False, nb_files=None,
+                         dryrun=False, lstm_condition="perrecording"):
     eeg_signals_dfs = []
-    kinds = ["clean", "ica", "sim", "simlocal",
-             "noise", "noiseica", "noisesim", "noisesimlocal"]
+    lstm_kinds = list(_LSTM_KINDS[lstm_condition])
+    lstm_noise_kinds = list(_LSTM_NOISE_KINDS[lstm_condition])
+    kinds = lstm_kinds + lstm_noise_kinds + [
+        "ica", "noiseica", "sim", "simlocal", "noisesim", "noisesimlocal"]
 
     topo_dfs = {kind: [] for kind in kinds}
     nave_xrs = []
@@ -326,6 +344,8 @@ def compute_erp_xarrays(path="processed", diff=False, nb_files=None, dryrun=Fals
         signal = rms(raw["original"].get_data(picks=eeg_names)[:, :nsample])
 
         for kind in topo_dfs:
+            if kind not in raw:
+                continue
             noise = raw["original"].get_data(picks=eeg_names)[:, :nsample]
             noise -= raw[kind].get_data(picks=eeg_names)[:, :nsample]
             noise = rms(noise)
@@ -341,6 +361,8 @@ def compute_erp_xarrays(path="processed", diff=False, nb_files=None, dryrun=Fals
             topo_dfs[kind].append(df)
 
         for kind in ["original"] + kinds:
+            if kind not in evoked:
+                continue
             ch_names = evoked[kind].columns.values
             n_ch = len(ch_names)
             N = len(evoked[kind].index)
@@ -369,7 +391,8 @@ def compute_erp_xarrays(path="processed", diff=False, nb_files=None, dryrun=Fals
             "Ensure Steps 1–4 have been run successfully."
         )
     eeg_signals_df = pd.concat(eeg_signals_dfs)
-    topo_df = {kind: pd.concat(topo_dfs[kind]) for kind in topo_dfs}
+    topo_df = {kind: pd.concat(topo_dfs[kind])
+               for kind in topo_dfs if topo_dfs[kind]}
 
     cols = ["times", "kind", "event_id", "ch_name", "subject", "run"]
     eeg_signals_df.set_index(cols, inplace=True)
@@ -378,12 +401,10 @@ def compute_erp_xarrays(path="processed", diff=False, nb_files=None, dryrun=Fals
     eeg_signals_xr["nave"] = xr.combine_by_coords(nave_xrs)
 
     if not dryrun:
-        if diff:
-            eeg_signals_xr.to_netcdf("eeg_signals_diff.netcdf")
-        else:
-            eeg_signals_xr.to_netcdf("eeg_signals.netcdf")
+        suffix = f"_{lstm_condition}" + ("_diff" if diff else "")
+        eeg_signals_xr.to_netcdf(f"eeg_signals{suffix}.netcdf")
 
-    for kind in kinds:
+    for kind in topo_df:
         topo_df[kind]["kind"] = kind
     topo_df = pd.concat(topo_df.values())
     topo_xr = topo_df.melt(id_vars=["subject", "run", "kind"],
@@ -393,10 +414,7 @@ def compute_erp_xarrays(path="processed", diff=False, nb_files=None, dryrun=Fals
                      .to_xarray()
 
     if not dryrun:
-        if diff:
-            topo_xr.to_netcdf("topo_raw_diff.netcdf")
-        else:
-            topo_xr.to_netcdf("topo_raw.netcdf")
+        topo_xr.to_netcdf(f"topo_raw{suffix}.netcdf")
 
     return eeg_signals_xr, topo_xr
 
