@@ -247,7 +247,12 @@ def compute_et_xarrays(path="processed", diff=False, nb_files=None,
         insts = get_insts(fname_clean, diff=diff, adjust_for_RT=True)
         if insts is None:
             continue
-        evoked, event_id = insts[1:3]
+        raw_dict, evoked, event_id, _ = insts
+        # Close file handles immediately — raw data is not needed beyond evoked
+        for r in raw_dict.values():
+            r.close()
+        del raw_dict, insts
+
         evoked_eye = get_evoked_eye(fname_clean, event_id, event_list=None,
                                     diff=diff, adjust_for_RT=True)
 
@@ -271,6 +276,7 @@ def compute_et_xarrays(path="processed", diff=False, nb_files=None,
             df["subject"], df["run"] = run, subject
             df["event_id"] = event_id
             et_signals_dfs.append(df)
+        del evoked
 
     if not snr_dfs:
         raise RuntimeError(
@@ -337,17 +343,19 @@ def compute_erp_xarrays(path="processed", diff=False, nb_files=None,
         if insts is None:
             continue
         raw, evoked, _, nave = insts
+        del insts
 
         eeg_names = raw["original"].copy().pick("eeg").ch_names
 
         nsample = min(len(raw["original"].times), len(raw["ica"]))
-        signal = rms(raw["original"].get_data(picks=eeg_names)[:, :nsample])
+        # Cache original data once to avoid redundant EDF reads per kind
+        original_data = raw["original"].get_data(picks=eeg_names)[:, :nsample]
+        signal = rms(original_data)
 
         for kind in topo_dfs:
             if kind not in raw:
                 continue
-            noise = raw["original"].get_data(picks=eeg_names)[:, :nsample]
-            noise -= raw[kind].get_data(picks=eeg_names)[:, :nsample]
+            noise = original_data - raw[kind].get_data(picks=eeg_names)[:, :nsample]
             noise = rms(noise)
 
             nsr = noise / signal
@@ -359,6 +367,11 @@ def compute_erp_xarrays(path="processed", diff=False, nb_files=None,
             df["subject"] = subject
             df["run"] = run
             topo_dfs[kind].append(df)
+
+        # Close file handles — all raw data has been extracted
+        for r in raw.values():
+            r.close()
+        del raw, original_data
 
         for kind in ["original"] + kinds:
             if kind not in evoked:
@@ -384,6 +397,7 @@ def compute_erp_xarrays(path="processed", diff=False, nb_files=None,
                     "run": [run],
                     "event_id": nave["original"].index.values},
             dims=["subject", "run", "event_id"]))
+        del evoked
 
     if not eeg_signals_dfs:
         raise RuntimeError(

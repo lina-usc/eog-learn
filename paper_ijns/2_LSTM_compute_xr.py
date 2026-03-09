@@ -63,6 +63,11 @@ def main() -> None:
         default="perrecording",
         help="Which LSTM condition to aggregate (default: perrecording).",
     )
+    parser.add_argument(
+        "--no-recompute",
+        action="store_true",
+        help="Skip task if all output .netcdf files already exist.",
+    )
     args = parser.parse_args()
     root = args.root
 
@@ -71,6 +76,15 @@ def main() -> None:
     to_run = [args.task] if args.task else list(TASKS)
     for task in to_run:
         fn, kwargs = TASKS[task]
+        suffix = f"_{args.condition}" + ("_diff" if kwargs.get("diff") else "")
+        if task in ("et", "et_diff"):
+            outputs = [f"snr{suffix}.netcdf", f"topo_erp{suffix}.netcdf",
+                       f"et_signals{suffix}.netcdf"]
+        else:
+            outputs = [f"eeg_signals{suffix}.netcdf", f"topo_raw{suffix}.netcdf"]
+        if args.no_recompute and all(Path(f).exists() for f in outputs):
+            print(f"[{task}] Output files exist, skipping.", flush=True)
+            continue
         print(f"[{task}] Computing ...", flush=True)
         fn(root, lstm_condition=args.condition, **kwargs)
         print(f"[{task}] Done.", flush=True)

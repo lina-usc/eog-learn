@@ -250,7 +250,7 @@ if _should_run xarray; then
             --job-name="eog_xarray_${_cond_key}"
             --export=ALL,ROOT="$ROOT",CONDITION="$_cond",$_COMMON
             ${_PARTITION_ARG:+"$_PARTITION_ARG"}
-            --mem=8G --time=6:00:00)
+            --mem=16G --time=6:00:00)
         [[ -n "$_dep" ]] && _XR_ARGS+=(--dependency="$_dep")
         _jid=$(sbatch "${_XR_ARGS[@]}" "$SLURM_DIR/05_xarray.sbatch")
         case "$_cond_key" in
