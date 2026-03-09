@@ -295,7 +295,7 @@ def compute_et_xarrays(path="processed", diff=False, nb_files=None,
                    .to_xarray()
     if not dryrun:
         suffix = f"_{lstm_condition}" + ("_diff" if diff else "")
-        snr_xr.to_netcdf(f"snr{suffix}.netcdf")
+        snr_xr.to_netcdf(f"snr{suffix}.netcdf", engine="h5netcdf")
 
     for condition, kind in topo_ev_df:
         topo_ev_df[(condition, kind)]["condition"] = condition
@@ -310,14 +310,14 @@ def compute_et_xarrays(path="processed", diff=False, nb_files=None,
                    .to_xarray()
 
     if not dryrun:
-        topo_ev_xr.to_netcdf(f"topo_erp{suffix}.netcdf")
+        topo_ev_xr.to_netcdf(f"topo_erp{suffix}.netcdf", engine="h5netcdf")
 
     et_signals_df = pd.concat(et_signals_dfs)
     et_signals_xr = et_signals_df.set_index(["times", "ch_name", "subject",
                                              "run", "event_id"]).to_xarray()
 
     if not dryrun:
-        et_signals_xr.to_netcdf(f"et_signals{suffix}.netcdf")
+        et_signals_xr.to_netcdf(f"et_signals{suffix}.netcdf", engine="h5netcdf")
 
     return snr_xr, topo_ev_xr, et_signals_xr
 
@@ -420,7 +420,7 @@ def compute_erp_xarrays(path="processed", diff=False, nb_files=None,
 
     if not dryrun:
         suffix = f"_{lstm_condition}" + ("_diff" if diff else "")
-        eeg_signals_xr.to_netcdf(f"eeg_signals{suffix}.netcdf")
+        eeg_signals_xr.to_netcdf(f"eeg_signals{suffix}.netcdf", engine="h5netcdf")
 
     for kind in topo_df:
         topo_df[kind]["kind"] = kind
@@ -432,7 +432,7 @@ def compute_erp_xarrays(path="processed", diff=False, nb_files=None,
                      .to_xarray()
 
     if not dryrun:
-        topo_xr.to_netcdf(f"topo_raw{suffix}.netcdf")
+        topo_xr.to_netcdf(f"topo_raw{suffix}.netcdf", engine="h5netcdf")
 
     return eeg_signals_xr, topo_xr
 

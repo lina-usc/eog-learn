@@ -22,7 +22,7 @@
 
 set -euo pipefail
 
-module load "$MODULE"
+module load $MODULE
 source "$VENV/bin/activate"
 
 cd "$SCRIPT_DIR"
