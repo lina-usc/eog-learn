@@ -121,7 +121,7 @@ echo "============================================================"
 # ---------------------------------------------------------------------------
 echo ""
 echo "Generating subjects.txt ..."
-module load "$MODULE"
+module load $MODULE
 source "$VENV/bin/activate"
 python3 - <<PYEOF > "$SLURM_DIR/subjects.txt"
 import sys
@@ -141,8 +141,12 @@ if _should_run lstm_pr || _should_run lstm_ps || _should_run lstm_as || \
 fi
 echo ""
 
-# Common --export base (each sbatch gets extra vars appended)
-_COMMON="MODULE=$MODULE,VENV=$VENV,SCRIPT_DIR=$SCRIPT_DIR"
+# MODULE may contain spaces (e.g. "python/3.11 mpi4py/4.1") which would break
+# SLURM's comma-separated --export parsing.  Export it as a shell variable so
+# that --export=ALL picks it up automatically, and keep only space-safe vars in
+# the explicit --export list.
+export MODULE
+_COMMON="VENV=$VENV,SCRIPT_DIR=$SCRIPT_DIR"
 
 # Initialise all job-ID variables so they're always defined
 JID_PR="" JID_PS="" JID_AS="" JID_ICA="" JID_SIMNIBS="" JID_SIM=""
