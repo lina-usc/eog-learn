@@ -16,7 +16,7 @@
 # =============================================================================
 #SBATCH --array=0-3
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=16G
+#SBATCH --mem=32G
 #SBATCH --time=6:00:00
 #SBATCH --output=slurm/logs/xarray_%A_%a.out
 

@@ -376,20 +376,14 @@ def compute_erp_xarrays(path="processed", diff=False, nb_files=None,
         for kind in ["original"] + kinds:
             if kind not in evoked:
                 continue
-            ch_names = evoked[kind].columns.values
-            n_ch = len(ch_names)
-            N = len(evoked[kind].index)
-            condition, time = evoked[kind].reset_index()[["condition", "time"]].T.values
-            df = pd.DataFrame({
-                    'times': np.concatenate([time]*n_ch),
-                    "amp": np.concatenate(evoked[kind].values.T),
-                    "subject": [subject]*N*n_ch,
-                    "run": [run]*N*n_ch,
-                    "kind": [kind]*N*n_ch,
-                    "event_id": np.concatenate([condition]*n_ch),
-                    "ch_name": np.concatenate([[ch_name]*N for ch_name in ch_names]),
-                })
-            eeg_signals_dfs.append(df)
+            # Keep wide format (n_cond×n_time rows × n_ch cols) to avoid a
+            # 128× row-explosion from melt; convert to xarray after the loop.
+            df_wide = evoked[kind].copy()
+            df_wide.index.names = ["event_id", "times"]
+            df_wide["subject"] = subject
+            df_wide["run"] = run
+            df_wide["kind"] = kind
+            eeg_signals_dfs.append(df_wide.reset_index())
 
         nave_xrs.append(xr.DataArray(
             [[nave["original"].values]],
@@ -404,13 +398,23 @@ def compute_erp_xarrays(path="processed", diff=False, nb_files=None,
             f"No valid recordings found in '{path}'. "
             "Ensure Steps 1–4 have been run successfully."
         )
+
+    # Convert wide-format accumulation → xarray without a long-format detour.
+    # Each element of eeg_signals_dfs is (n_cond×n_time, n_ch+3) wide;
+    # going through melt/long-format would inflate memory by n_ch (≈128×).
     eeg_signals_df = pd.concat(eeg_signals_dfs)
+    del eeg_signals_dfs
+    eeg_signals_df = eeg_signals_df.set_index(
+        ["times", "kind", "event_id", "subject", "run"])
+    # to_xarray() creates a Dataset with one variable per channel;
+    # to_array() stacks them into a single (ch_name, ...) DataArray.
+    ds = eeg_signals_df.to_xarray()
+    del eeg_signals_df
+    eeg_signals_xr = ds.to_array(dim="ch_name").to_dataset(name="amp")
+    del ds
+
     topo_df = {kind: pd.concat(topo_dfs[kind])
                for kind in topo_dfs if topo_dfs[kind]}
-
-    cols = ["times", "kind", "event_id", "ch_name", "subject", "run"]
-    eeg_signals_df.set_index(cols, inplace=True)
-    eeg_signals_xr = eeg_signals_df.to_xarray()
 
     eeg_signals_xr["nave"] = xr.combine_by_coords(nave_xrs)
 
