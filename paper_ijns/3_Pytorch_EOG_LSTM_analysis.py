@@ -1,17 +1,18 @@
 import marimo
 
-__generated_with = "0.10.0"
+__generated_with = "0.20.4"
 app = marimo.App(width="medium")
 
 
 @app.cell
-def __():
+def _():
     import marimo as mo
+
     return (mo,)
 
 
 @app.cell
-def __():
+def _():
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent))
@@ -35,34 +36,43 @@ def __():
         plot_dist_dot,
     )
     from analyses import get_insts
+
     return (
-        Path, eoglearn, mne, np, overlay_raws_stack, pd, permutation_cluster_test,
-        plot_dist_dot, plot_dot_fig, plot_montage_topo, plot_values_topomap,
-        plt, sns, stats, sys, tqdm, xr, get_insts,
+        Path,
+        get_insts,
+        mne,
+        np,
+        overlay_raws_stack,
+        pd,
+        plot_dist_dot,
+        plot_montage_topo,
+        plot_values_topomap,
+        plt,
+        sns,
+        stats,
+        xr,
     )
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        """
-        # PyTorch EOG LSTM — Analysis and Figures
+def _(mo):
+    mo.md("""
+    # PyTorch EOG LSTM — Analysis and Figures
 
-        Main analysis notebook comparing LSTM regression / ICA+ICLabel /
-        biophysical simulation for EOG artefact removal on the EEGEyeNet dataset.
+    Main analysis notebook comparing LSTM regression / ICA+ICLabel /
+    biophysical simulation for EOG artefact removal on the EEGEyeNet dataset.
 
-        **Prerequisites:** `2_LSTM_compute_xr.py` must have been run to produce
-        the `.netcdf` xarray files.
-        """
-    )
-    return ()
+    **Prerequisites:** `2_LSTM_compute_xr.py` must have been run to produce
+    the `.netcdf` xarray files.
+    """)
+    return
 
 
 @app.cell
-def __(mo):
+def _(mo):
     import os as _os
     xr_path_input = mo.ui.text(
-        value=".",
+        value="/Volumes/SSD/eoglearn_results",
         label="Path to directory containing .netcdf xarray files",
         full_width=True,
     )
@@ -71,12 +81,17 @@ def __(mo):
         label="Path to processed EDF files (for raw signal examples)",
         full_width=True,
     )
-    mo.vstack([xr_path_input, processed_path_input])
-    return processed_path_input, xr_path_input
+    condition_input = mo.ui.dropdown(
+        options=["perrecording", "persubject", "acrosssubject"],
+        value="perrecording",
+        label="LSTM condition",
+    )
+    mo.vstack([xr_path_input, processed_path_input, condition_input])
+    return condition_input, processed_path_input, xr_path_input
 
 
 @app.cell
-def __(Path, np, xr, xr_path_input):
+def _(Path, condition_input, xr, xr_path_input):
     def load_xarrays(postfix="", path=None):
         if path is None:
             path = Path("./")
@@ -93,7 +108,7 @@ def __(Path, np, xr, xr_path_input):
         xarrays = {}
         for label in subsets:
             xarrays[label] = xr.open_dataset(
-                path / f"{label}{postfix}.netcdf", engine="netcdf4")
+                path / f"{label}{postfix}.netcdf", engine="h5netcdf")
             if subsets[label]:
                 if label == "eeg_signals":
                     xarrays["eeg_nave"] = xarrays[label]["nave"]
@@ -114,36 +129,41 @@ def __(Path, np, xr, xr_path_input):
 
         return xarrays
 
-    xarrays = load_xarrays(postfix="", path=xr_path_input.value)
-    xarrays_diff = load_xarrays(postfix="_diff", path=xr_path_input.value)
-    return load_xarrays, xarrays, xarrays_diff
+    cond = condition_input.value
+    xarrays = load_xarrays(postfix=f"_{cond}", path=xr_path_input.value)
+    xarrays_diff = load_xarrays(postfix=f"_{cond}_diff", path=xr_path_input.value)
+    return xarrays, xarrays_diff
 
 
 @app.cell
-def __(mo):
-    mo.md("## Gaze distribution — dot positions")
-    return ()
+def _(mo):
+    mo.md("""
+    ## Gaze distribution — dot positions
+    """)
+    return
 
 
 @app.cell
-def __(plot_dist_dot, plt, xarrays):
+def _(plot_dist_dot, plt, xarrays):
     import os as _os
     _os.makedirs("images", exist_ok=True)
     fig_dots, ax_dots = plt.subplots(1, 1, figsize=(6, 5))
     plot_dist_dot(ax_dots, xarrays["et_signals"])
     fig_dots.savefig("images/dot_positions.png", dpi=300)
     fig_dots
-    return ax_dots, fig_dots
+    return
 
 
 @app.cell
-def __(mo):
-    mo.md("## Raw signal overlay — one subject example")
-    return ()
+def _(mo):
+    mo.md("""
+    ## Raw signal overlay — one subject example
+    """)
+    return
 
 
 @app.cell
-def __(mo):
+def _(mo):
     subject_input = mo.ui.text(value="EP10", label="Subject")
     run_input = mo.ui.text(value="1", label="Run")
     mo.hstack([subject_input, run_input])
@@ -151,8 +171,14 @@ def __(mo):
 
 
 @app.cell
-def __(get_insts, mne, overlay_raws_stack, processed_path_input,
-        run_input, subject_input, Path):
+def _(
+    Path,
+    get_insts,
+    overlay_raws_stack,
+    processed_path_input,
+    run_input,
+    subject_input,
+):
     _EOG_CH = [
         "E127", "E126", "E17", "E21", "E14",
         "E25", "E22", "E15", "E16", "E9", "E8",
@@ -178,25 +204,30 @@ def __(get_insts, mne, overlay_raws_stack, processed_path_input,
             ha="center", va="center",
         )
     fig_overlay
-    return (fig_overlay,)
+    return
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        """
-        ## ERP comparison figures
+def _(mo):
+    mo.md("""
+    ## ERP comparison figures
 
-        Multi-panel figure: noise lineplot / cleaned lineplot / gaze / topomaps
-        comparing Original / ICA / Biophysical / Regression approaches.
-        """
-    )
-    return ()
+    Multi-panel figure: noise lineplot / cleaned lineplot / gaze / topomaps
+    comparing Original / ICA / Biophysical / Regression approaches.
+    """)
+    return
 
 
 @app.cell
-def __(mne, plot_dist_dot, plot_montage_topo, plot_values_topomap,
-        plt, sns, xr):
+def _(
+    mne,
+    plot_dist_dot,
+    plot_montage_topo,
+    plot_values_topomap,
+    plt,
+    sns,
+    xr,
+):
     import matplotlib.pyplot as _plt
 
     _channels = [
@@ -357,42 +388,40 @@ def __(mne, plot_dist_dot, plot_montage_topo, plot_values_topomap,
 
 
 @app.cell
-def __(mo):
+def _(mo):
     event_id_input = mo.ui.text(value="15", label="Event ID for ERP figure")
     event_id_input
     return (event_id_input,)
 
 
 @app.cell
-def __(event_id_input, plot_ERP_figure, xarrays):
+def _(event_id_input, plot_ERP_figure, xarrays):
     import os as _os
     _os.makedirs("images", exist_ok=True)
     fig_erp = plot_ERP_figure(xarrays, event_id_input.value, diff=False)
     fig_erp
-    return (fig_erp,)
+    return
 
 
 @app.cell
-def __(event_id_input, plot_ERP_figure, xarrays_diff):
+def _(event_id_input, plot_ERP_figure, xarrays_diff):
     fig_erp_diff = plot_ERP_figure(xarrays_diff, event_id_input.value, diff=True)
     fig_erp_diff
-    return (fig_erp_diff,)
+    return
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        """
-        ## Topomap — noise percentage (raw RMS-based)
+def _(mo):
+    mo.md("""
+    ## Topomap — noise percentage (raw RMS-based)
 
-        Comparison of percent EOG across all four cleaning methods.
-        """
-    )
-    return ()
+    Comparison of percent EOG across all four cleaning methods.
+    """)
+    return
 
 
 @app.cell
-def __(mne, np, plot_values_topomap, plt, xarrays):
+def _(mne, np, plot_values_topomap, plt, xarrays):
     _montage = mne.channels.make_standard_montage("GSN-HydroCel-129")
     _kinds = ["clean", "ica", "sim", "simlocal"]
     _titles = ["ML Regression", "ICA+ICLabel", "Biophysical (global)", "Biophysical (local)"]
@@ -419,26 +448,23 @@ def __(mne, np, plot_values_topomap, plt, xarrays):
     fig_topo.tight_layout()
     fig_topo.savefig("images/topo_noise_comparison.png", dpi=300)
     fig_topo
-    return axes_topo, fig_topo
+    return
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        """
-        ## Gain analysis
+def _(mo):
+    mo.md("""
+    ## Gain analysis
 
-        Loads per-subject scaling factors (`gains.csv`) produced by the
-        `1.3_eog_gen_model_2025.py` notebook and compares global vs.
-        per-channel (individual) gains using permutation cluster tests.
-        """
-    )
-    return ()
+    Loads per-subject scaling factors (`gains.csv`) produced by the
+    `1.3_eog_gen_model_2025.py` notebook and compares global vs.
+    per-channel (individual) gains using permutation cluster tests.
+    """)
+    return
 
 
 @app.cell
-def __(mne, np, pd, permutation_cluster_test, plot_values_topomap,
-        plt, stats, xarrays):
+def _(mne, np, pd, plot_values_topomap, plt, stats):
     from functools import partial
 
     _montage = mne.channels.make_standard_montage("GSN-HydroCel-129")
@@ -485,24 +511,21 @@ def __(mne, np, pd, permutation_cluster_test, plot_values_topomap,
                  ha="center", va="center")
 
     fig_gains
-    return fig_gains, gains_df, partial
+    return
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        """
-        ## SNR analysis
+def _(mo):
+    mo.md("""
+    ## SNR analysis
 
-        Pre- vs. post-RT SNR (dB) per approach across all subjects/runs and events.
-        """
-    )
-    return ()
+    Pre- vs. post-RT SNR (dB) per approach across all subjects/runs and events.
+    """)
+    return
 
 
 @app.cell
-def __(mne, np, pd, permutation_cluster_test, plot_values_topomap,
-        plt, sns, stats, xarrays):
+def _(mne, plt, sns, xarrays):
     _montage = mne.channels.make_standard_montage("GSN-HydroCel-129")
 
     # Reshape SNR data for plotting
@@ -542,24 +565,22 @@ def __(mne, np, pd, permutation_cluster_test, plot_values_topomap,
         _ax.text(0.5, 0.5, f"SNR plot error:\n{_e}", ha="center", va="center")
 
     fig_snr
-    return axes_snr, fig_snr
+    return
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        """
-        ## Statistical tests
+def _(mo):
+    mo.md("""
+    ## Statistical tests
 
-        Permutation cluster tests comparing approaches across subjects/runs.
-        One-sample t-test on SNR gain vs. zero (i.e., vs. no improvement).
-        """
-    )
-    return ()
+    Permutation cluster tests comparing approaches across subjects/runs.
+    One-sample t-test on SNR gain vs. zero (i.e., vs. no improvement).
+    """)
+    return
 
 
 @app.cell
-def __(np, pd, permutation_cluster_test, stats, xarrays):
+def _(np, pd, stats, xarrays):
     try:
         _snr = xarrays["snr"]
         _kinds = ["clean", "ica", "sim", "simlocal"]
@@ -591,7 +612,7 @@ def __(np, pd, permutation_cluster_test, stats, xarrays):
         stats_df = pd.DataFrame({"error": [str(_e)]})
 
     stats_df
-    return (stats_df,)
+    return
 
 
 if __name__ == "__main__":
