@@ -38,7 +38,7 @@ classifiers = [
 dependencies = [
     'mne >= 1.5',
     'scikit-learn >= 1.0',
-    'tensorflow-cpu; platform_system != "Darwin"',
+    'tensorflow',
 ]
 
 [project.optional-dependencies]
@@ -59,6 +59,8 @@ doc = [
 
 extras = ['pymatreader', 'pandas', 'defusedxml']
 
+paper = ['marimo', 'frozendict', 'mne-connectivity', 'edfio']
+
 test = [
     'black',
     'codespell',
@@ -73,6 +75,7 @@ all = [
     'eoglearn[doc]',
     'eoglearn[test]',
     'eoglearn[extras]',
+    'eoglearn[paper]',
 ]
 full = [
     'eoglearn[all]',

@@ -1,0 +1,626 @@
+#!/work/co20/eog_lstm/venv_lstm/bin/python
+
+import sys
+import os
+import time
+import errno
+import traceback
+import multiprocessing
+import threading
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+
+# Scientific Stack
+import numpy as np
+
+# ML/DL Stack
+from sklearn.preprocessing import StandardScaler
+import torch
+import torch.nn as nn
+import torch.nn.functional as F # for easy use of relu
+
+
+# File I/O, Signal Processing
+import mne
+import eoglearn  # This is my package for this project
+
+from tqdm import tqdm
+
+from filter import filter_kwargs
+
+mne.set_log_level("WARNING")
+
+
+# ── Timeout helper for prep_data ──────────────────────────────────────────────
+#
+# Pool workers are daemon processes.  Python forbids daemon processes from
+# spawning child processes (AssertionError: daemonic processes are not allowed
+# to have children), so a subprocess-based timeout cannot be used here.
+#
+# Fix: run prep_data in a daemon threading.Thread.  Threads can always be
+# started from daemon processes.  thread.join(timeout=N) returns after N seconds
+# even when the thread is blocked inside a C extension or non-interruptible I/O
+# — no SIGALRM signal machinery is needed.  If the thread hangs it keeps running
+# in the background, but maxtasksperchild=1 guarantees the Pool worker process
+# exits after each task, which kills all daemon threads in that process.
+
+class _PrepTimeout(Exception):
+    pass
+
+
+def _prep_data_safe(subject, run, timeout_s=120, no_mp=False):
+    """Call prep_data in a daemon thread; skip the recording if it hangs.
+
+    When no_mp=True, calls prep_data directly (no thread, no timeout).
+    """
+    if no_mp:
+        return prep_data(subject=subject, run=run)
+    result_box = [None]
+    exc_box = [None]
+
+    def _target():
+        try:
+            result_box[0] = prep_data(subject=subject, run=run)
+        except Exception as exc:
+            exc_box[0] = exc
+
+    t = threading.Thread(target=_target, daemon=True)
+    t.start()
+    t.join(timeout=timeout_s)
+    if t.is_alive():
+        raise _PrepTimeout(
+            f"prep_data timed out after {timeout_s}s ({subject} run {run})"
+        )
+    if exc_box[0] is not None:
+        raise exc_box[0]
+    return result_box[0]
+
+
+# ── Timing helpers ────────────────────────────────────────────────────────────
+
+def _init_timing_csv(path: Path) -> None:
+    """Atomically create timings.csv with header (safe for concurrent processes)."""
+    try:
+        fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.write(fd, b"subject,run,step,condition,duration_s,status\n")
+        os.close(fd)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            raise
+
+
+def _log_timing(root: str, subject: str, run, step: str, condition: str,
+                duration: float, status: str) -> None:
+    """Append one timing row to timings.csv (safe for concurrent O_APPEND writes)."""
+    row = f"{subject},{run},{step},{condition},{duration:.2f},{status}\n"
+    try:
+        with open(Path(root) / "timings.csv", "a") as f:
+            f.write(row)
+    except OSError:
+        pass  # timing failure is non-critical
+
+
+def _iter_progress(iterable, total, desc):
+    """tqdm in a TTY; one compact print-per-item in log files."""
+    if sys.stdout.isatty():
+        yield from tqdm(iterable, total=total, desc=desc, position=0, leave=True)
+    else:
+        for i, item in enumerate(iterable, 1):
+            yield item
+            print(f"[{desc}] {i}/{total}", flush=True)
+
+
+class EOGRegressor(nn.Module):
+    def __init__(self, n_input_features, n_output_features,
+                 hidden_size=64, num_layers=1, dropout=0.5):
+        super(EOGRegressor, self).__init__()
+        self.input_size = n_input_features
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.dropout = nn.Dropout(dropout)
+
+        self.rnn = nn.LSTM(n_input_features, hidden_size, num_layers=num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_size, n_output_features)
+
+    def forward(self, input):
+        # input shape: (batch_size, seq_len, input_size)
+        batch_size = input.size(0)  # same as input.shape[0]
+
+        # Initialize hidden state & cell states
+        h0 = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+        c0 = torch.zeros(self.num_layers, batch_size, self.hidden_size)
+
+        # Forward propagate RNN
+        out, (h0, c0) = self.rnn(input, (h0, c0))
+
+        # Decode the hidden state of the last time step
+        out = self.dropout(out)
+        out = self.fc(out)
+
+        return out
+
+
+def train_the_model(X, Y, num_epochs=1000, hidden_size=64, num_layers=1, dropout=0.5):
+    """ Train the Pytorch model."""
+
+    # Instantiate the model
+    if X.ndim == 3:
+        assert Y.ndim == 3
+        input_features = X.shape[2]  # Assuming (batch_size, seq_len, input_size)
+        output_features = Y.shape[2]
+    else:
+        raise ValueError("Input data must have 3 dimensions: (batch_size, seq_len, input_size)")
+
+    model = EOGRegressor(input_features, output_features, hidden_size=hidden_size,
+                         num_layers=num_layers, dropout=dropout)
+
+    # Loss function (Mean Squared Error)
+    criterion = nn.MSELoss()
+
+    # Optimizer
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+
+    # Pick a tqdm position based on which pool worker we're in so that
+    # concurrent training bars each get their own terminal line.
+    identity = multiprocessing.current_process()._identity
+    pos = identity[0] if identity else 0  # workers are 1-indexed; main has no identity
+
+    losses = np.zeros(num_epochs)
+    # Training loop
+    model.train()
+    for i in tqdm(range(num_epochs), desc="Training LSTM",
+                  position=pos, leave=False, disable=not sys.stderr.isatty()):
+        # Forward pass
+        outputs = model(X)
+
+        # Compute loss
+        loss = criterion(outputs, Y)
+        losses[i] = loss.detach().numpy()
+
+        # Zero gradients, backward pass, and optimization
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        if not sys.stderr.isatty() and (i + 1) % 100 == 0:
+            print(f"    epoch {i+1}/{num_epochs}  loss={loss.item():.6f}", flush=True)
+
+    # Set model to eval mode to turn off dropout
+    model.eval()
+    return model, losses
+
+
+def eval_model(model, X, Y):
+    with torch.no_grad():
+        predicted_noise = model(X)
+        denoised_output = (Y - predicted_noise).numpy()
+
+    return predicted_noise, denoised_output
+
+
+def prep_data(subject="EP10", run=1):
+    fpath = eoglearn.datasets.fetch_eegeyenet(subject=subject, run=run)
+    raw = eoglearn.io.read_raw_eegeyenet(fpath)
+
+    raw.set_montage("GSN-HydroCel-129", verbose=False)
+    raw.filter(picks="eeg", verbose=False, **filter_kwargs).resample(100, verbose=False)
+    raw.set_eeg_reference("average", verbose=False)
+    return raw
+
+
+def format_data_for_ml(raw, tmax, scaler_x=None, scaler_y=None):
+    # normalize the dataset
+    X = raw.get_data(picks=["eyetrack"]).T #[::5] # decimate the eyetracking data
+
+    Y = raw.get_data(picks="eeg").T
+
+    if scaler_x is None:
+        scaler_x = StandardScaler().fit(X)
+    X = scaler_x.transform(X)
+
+    # For Y we need to split the fit and transform into 2 steps
+    # Because we will need to inverse transform the model output later during evaluation
+    if scaler_y is None:
+        scaler_y = StandardScaler().fit(Y)
+    Y = scaler_y.transform(Y)
+
+    # 1s epochs
+    X = X.reshape(tmax, int(raw.info["sfreq"]), 3)
+    Y = Y.reshape(tmax, int(raw.info["sfreq"]), 129)
+
+    # Convert data to tensors
+    X_tensor = torch.from_numpy(X).float()
+    Y_tensor = torch.from_numpy(Y).float()
+
+    return X_tensor, Y_tensor, scaler_x, scaler_y
+
+
+def fit_scalers(raws):
+    """Fit StandardScalers on concatenated data from multiple raws."""
+    X_all = np.vstack([raw.get_data(picks=["eyetrack"]).T for raw in raws])
+    Y_all = np.vstack([raw.get_data(picks="eeg").T for raw in raws])
+    return StandardScaler().fit(X_all), StandardScaler().fit(Y_all)
+
+
+def concat_tensors(raws, scaler_x, scaler_y):
+    """Format and concatenate multiple raws into training tensors."""
+    X_list, Y_list = [], []
+    for raw in raws:
+        tmax = int(raw.times[-1])
+        raw_crop = raw.copy().crop(tmax=tmax, include_tmax=False)
+        X, Y, _, _ = format_data_for_ml(raw_crop, tmax, scaler_x, scaler_y)
+        X_list.append(X)
+        Y_list.append(Y)
+    return torch.cat(X_list, dim=0), torch.cat(Y_list, dim=0)
+
+
+def clean_data(subject, run, tmax=None):
+
+    raw = prep_data(subject=subject, run=run)
+
+    raw_train = raw.copy()
+    if tmax is None:
+        tmax = int(raw.times[-1])
+    raw_train.crop(tmax=tmax, include_tmax=False)
+
+    X_tensor, Y_tensor, _, scaler_y = format_data_for_ml(raw_train, tmax)
+    model, losses = train_the_model(X_tensor, Y_tensor, dropout=.5, num_layers=2)
+
+    tmax = int(raw.times[-1])
+    raw.crop(tmax=tmax, include_tmax=False)
+    X_tensor, Y_tensor, _, scaler_y = format_data_for_ml(raw, tmax)
+    predicted_noise, denoised_output = eval_model(model, X_tensor, Y_tensor)
+
+    # Reshape back to 2D and inverse transform to original units (Volts)
+    sfreq = int(raw.info['sfreq'])
+    predicted_noise = scaler_y.inverse_transform(
+        predicted_noise.reshape(tmax * sfreq, 129)).T
+    denoised_output = scaler_y.inverse_transform(
+        denoised_output.reshape(tmax * sfreq, 129)).T
+
+    raw_clean = mne.io.RawArray(denoised_output, raw.copy().pick("eeg").info, verbose=False)
+    raw_noise = mne.io.RawArray(predicted_noise, raw.copy().pick("eeg").info, verbose=False)
+    return raw, raw_clean, raw_noise
+
+
+def clean_data_per_subject(subject, run):
+    """Train on all other runs from the same subject; test on target run.
+
+    Returns None if the subject has only one run (no training data available).
+    """
+    runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
+    all_runs = runs_dict[subject]
+    train_runs = [r for r in all_runs if r != run]
+    if not train_runs:
+        return None
+
+    train_raws = [prep_data(subject=subject, run=r) for r in train_runs]
+    test_raw = prep_data(subject=subject, run=run)
+
+    scaler_x, scaler_y = fit_scalers(train_raws)
+    X_train, Y_train = concat_tensors(train_raws, scaler_x, scaler_y)
+    model, _ = train_the_model(X_train, Y_train, dropout=.5, num_layers=2)
+
+    tmax = int(test_raw.times[-1])
+    test_raw.crop(tmax=tmax, include_tmax=False)
+    X_test, Y_test, _, _ = format_data_for_ml(test_raw, tmax, scaler_x, scaler_y)
+    predicted_noise, denoised_output = eval_model(model, X_test, Y_test)
+
+    sfreq = int(test_raw.info['sfreq'])
+    predicted_noise = scaler_y.inverse_transform(
+        predicted_noise.reshape(tmax * sfreq, 129)).T
+    denoised_output = scaler_y.inverse_transform(
+        denoised_output.reshape(tmax * sfreq, 129)).T
+
+    raw_clean = mne.io.RawArray(denoised_output, test_raw.copy().pick("eeg").info, verbose=False)
+    raw_noise = mne.io.RawArray(predicted_noise, test_raw.copy().pick("eeg").info, verbose=False)
+    return test_raw, raw_clean, raw_noise
+
+
+def clean_data_across_subjects(subject, no_mp=False):
+    """Train on all runs from all other subjects; test on all runs of test subject.
+
+    Uses two-pass streaming to keep peak RAM low (~3 GB instead of ~11 GB):
+      Pass 1 — fit scalers with StandardScaler.partial_fit, one recording at a time.
+      Pass 2 — build training tensors, one recording at a time, discarding each raw
+               immediately after transformation.
+    The model is trained once and applied to every run of the test subject.
+    Returns a dict {run: (test_raw, raw_clean, raw_noise)}.
+    """
+    runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
+
+    train_pairs = [(subj, r) for subj in runs_dict
+                   if subj != subject and "EP" in subj
+                   for r in runs_dict[subj]]
+    print(f"    {len(train_pairs)} train recordings from "
+          f"{len({p[0] for p in train_pairs})} subjects — streaming (2 passes).",
+          flush=True)
+
+    # ── Pass 1: fit scalers incrementally (one raw at a time) ─────────────────
+    print("    Pass 1/2: fitting scalers ...", flush=True)
+    scaler_x = StandardScaler()
+    scaler_y = StandardScaler()
+    train_pairs_ok = []
+    for i, (subj, r) in enumerate(train_pairs, 1):
+        try:
+            raw = _prep_data_safe(subj, r, timeout_s=120, no_mp=no_mp)
+            scaler_x.partial_fit(raw.get_data(picks=["eyetrack"]).T)
+            scaler_y.partial_fit(raw.get_data(picks="eeg").T)
+            train_pairs_ok.append((subj, r))
+            print(f"    [pass1 {i}/{len(train_pairs)}] fitted {subj} run {r}",
+                  flush=True)
+            del raw
+        except Exception as exc:
+            print(f"    [pass1 {i}/{len(train_pairs)}] SKIPPED {subj} run {r}: "
+                  f"{type(exc).__name__}: {exc}", flush=True)
+
+    if not train_pairs_ok:
+        raise RuntimeError("All training recordings failed — cannot train.")
+    n_skipped = len(train_pairs) - len(train_pairs_ok)
+    if n_skipped:
+        print(f"    WARNING: {n_skipped}/{len(train_pairs)} recordings skipped — "
+              f"training on {len(train_pairs_ok)} recordings.", flush=True)
+
+    # ── Pass 2: build training tensors (one raw at a time) ───────────────────
+    print("    Pass 2/2: building training tensors ...", flush=True)
+    X_list, Y_list = [], []
+    for i, (subj, r) in enumerate(train_pairs_ok, 1):
+        try:
+            raw = _prep_data_safe(subj, r, timeout_s=120, no_mp=no_mp)
+            tmax = int(raw.times[-1])
+            raw.crop(tmax=tmax, include_tmax=False)
+            X, Y, _, _ = format_data_for_ml(raw, tmax, scaler_x, scaler_y)
+            X_list.append(X)
+            Y_list.append(Y)
+            print(f"    [pass2 {i}/{len(train_pairs_ok)}] tensored {subj} run {r}",
+                  flush=True)
+            del raw
+        except Exception as exc:
+            print(f"    [pass2 {i}/{len(train_pairs_ok)}] SKIPPED {subj} run {r}: "
+                  f"{type(exc).__name__}: {exc}", flush=True)
+
+    if not X_list:
+        raise RuntimeError("All recordings failed in tensor pass — cannot train.")
+
+    X_train = torch.cat(X_list, dim=0)
+    Y_train = torch.cat(Y_list, dim=0)
+    del X_list, Y_list
+    print(f"    Training tensor shape: X={tuple(X_train.shape)}  "
+          f"Y={tuple(Y_train.shape)}", flush=True)
+
+    # ── Train ─────────────────────────────────────────────────────────────────
+    model, _ = train_the_model(X_train, Y_train, dropout=.5, num_layers=2)
+    del X_train, Y_train
+
+    # ── Evaluate on every run of the test subject ─────────────────────────────
+    test_runs = runs_dict[subject]
+    print(f"    Evaluating on {len(test_runs)} test runs of {subject} ...", flush=True)
+    results = {}
+    for r in test_runs:
+        try:
+            print(f"    Loading test run {r} ...", flush=True)
+            test_raw = prep_data(subject=subject, run=r)
+            tmax = int(test_raw.times[-1])
+            test_raw.crop(tmax=tmax, include_tmax=False)
+            X_test, Y_test, _, _ = format_data_for_ml(test_raw, tmax, scaler_x, scaler_y)
+            predicted_noise, denoised_output = eval_model(model, X_test, Y_test)
+            sfreq = int(test_raw.info['sfreq'])
+            predicted_noise = scaler_y.inverse_transform(
+                predicted_noise.reshape(tmax * sfreq, 129)).T
+            denoised_output = scaler_y.inverse_transform(
+                denoised_output.reshape(tmax * sfreq, 129)).T
+            raw_clean = mne.io.RawArray(
+                denoised_output, test_raw.copy().pick("eeg").info, verbose=False)
+            raw_noise = mne.io.RawArray(
+                predicted_noise, test_raw.copy().pick("eeg").info, verbose=False)
+            results[r] = (test_raw, raw_clean, raw_noise)
+        except Exception as exc:
+            print(f"    FAILED test run {r}: {type(exc).__name__}: {exc}", flush=True)
+    return results
+
+
+def process(subject_run, root, tmax=None):
+    subject, run = subject_run
+    t0 = time.perf_counter()
+    status = "failed"
+    try:
+        print(f"  [{subject} run {run}] Training LSTM...", flush=True)
+        raw, raw_clean, raw_noise = clean_data(subject=subject, run=run, tmax=tmax)
+        raw.export(str(Path(root) / f"{subject}_{run}_original.edf"), overwrite=True, verbose=False)
+        raw_clean.export(str(Path(root) / f"{subject}_{run}_clean.edf"), overwrite=True, verbose=False)
+        raw_noise.export(str(Path(root) / f"{subject}_{run}_noise.edf"), overwrite=True, verbose=False)
+        print(f"  [{subject} run {run}] Done.", flush=True)
+        status = "ok"
+        return True
+    except Exception:
+        traceback.print_exc()
+        return False
+    finally:
+        _log_timing(root, subject, run, "1.1", "perrecording",
+                    time.perf_counter() - t0, status)
+
+
+def process_persubject(subject_run, root):
+    subject, run = subject_run
+    t0 = time.perf_counter()
+    status = "failed"
+    try:
+        if "EP" not in subject:
+            status = "n/a"
+            return True
+        print(f"  [{subject} run {run}] Training LSTM (per-subject)...", flush=True)
+        result = clean_data_per_subject(subject, run)
+        if result is None:
+            status = "n/a"
+            return True
+        raw, raw_clean, raw_noise = result
+        raw_clean.export(str(Path(root) / f"{subject}_{run}_clean_persubject.edf"), overwrite=True, verbose=False)
+        raw_noise.export(str(Path(root) / f"{subject}_{run}_noise_persubject.edf"), overwrite=True, verbose=False)
+        print(f"  [{subject} run {run}] Done.", flush=True)
+        status = "ok"
+        return True
+    except Exception:
+        traceback.print_exc()
+        return False
+    finally:
+        _log_timing(root, subject, run, "1.1", "persubject",
+                    time.perf_counter() - t0, status)
+
+
+def process_acrosssubject(subject, root, no_mp=False):
+    t0 = time.perf_counter()
+    status = "failed"
+    try:
+        if "EP" not in subject:
+            status = "n/a"
+            return True
+        print(f"  [{subject}] Training LSTM (across-subject)...", flush=True)
+        results = clean_data_across_subjects(subject, no_mp=no_mp)
+        if not results:
+            raise RuntimeError("All test runs failed evaluation.")
+        for r, (_, raw_clean, raw_noise) in results.items():
+            print(f"  [{subject} run {r}] Exporting results ...", flush=True)
+            raw_clean.export(
+                str(Path(root) / f"{subject}_{r}_clean_acrosssubject.edf"),
+                overwrite=True, verbose=False)
+            raw_noise.export(
+                str(Path(root) / f"{subject}_{r}_noise_acrosssubject.edf"),
+                overwrite=True, verbose=False)
+            print(f"  [{subject} run {r}] Done.", flush=True)
+            _log_timing(root, subject, r, "1.1", "acrosssubject",
+                        time.perf_counter() - t0, "ok")
+        status = "ok"
+        return True
+    except Exception:
+        traceback.print_exc()
+        return False
+    finally:
+        if status != "ok":
+            _log_timing(root, subject, "all", "1.1", "acrosssubject",
+                        time.perf_counter() - t0, status)
+
+
+root = "processed/"
+# root = "/Users/christian/Library/CloudStorage/OneDrive-UniversityofSouthCarolina/Data/eog_cleaning_study/processed/"
+
+
+if __name__ == "__main__":
+    import argparse
+    from functools import partial
+
+    parser = argparse.ArgumentParser(
+        description="Run LSTM EOG regression cleaning pipeline."
+    )
+    parser.add_argument(
+        "--condition",
+        choices=["perrecording", "persubject", "acrosssubject"],
+        default="perrecording",
+        help="Training/testing regime (default: perrecording)",
+    )
+    parser.add_argument(
+        "--root",
+        default=root,
+        help="Output directory for processed EDF files (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--no-recompute",
+        dest="recompute",
+        action="store_false",
+        default=True,
+        help="Skip recordings whose output files already exist",
+    )
+    parser.add_argument(
+        "--subjects",
+        nargs="+",
+        default=None,
+        metavar="SUBJECT",
+        help="Restrict processing to these subjects (e.g. EP10 EP11)",
+    )
+    parser.add_argument(
+        "--no-multiprocessing",
+        dest="no_mp",
+        action="store_true",
+        default=False,
+        help="Disable all multiprocessing and threading (run fully in-process)",
+    )
+    args = parser.parse_args()
+
+    condition = args.condition
+    root = args.root
+    recompute = args.recompute
+    no_mp = args.no_mp
+
+    # Use fewer processes for memory-intensive conditions
+    if condition == "acrosssubject":
+        nb_processes = 1   # loads all other subjects — very large memory
+    elif condition == "persubject":
+        nb_processes = 2   # loads all other runs per subject
+    else:
+        nb_processes = 5
+    Path(root).mkdir(parents=True, exist_ok=True)
+    _init_timing_csv(Path(root) / "timings.csv")
+
+    runs_dict = eoglearn.datasets.eegeyenet.get_subjects_runs()
+    subjects = args.subjects if args.subjects else [s for s in runs_dict if s.startswith("EP")]
+    subject_run = np.concatenate([[(subject, run)
+                                   for run in runs_dict[subject]]
+                                  for subject in subjects
+                                  if subject in runs_dict])
+
+    if condition == "perrecording":
+        subject_run = [(s, r) for s, r in subject_run
+                       if recompute or not (Path(root) / f"{s}_{r}_noise.edf").exists()]
+        if not subject_run:
+            print("WARNING: Nothing to process — all output files exist. "
+                  "Pass --recompute to force reprocessing.", flush=True)
+        if no_mp:
+            results = [process(sr, root=root) for sr in
+                       _iter_progress(subject_run, total=len(subject_run), desc="Recordings")]
+        else:
+            with multiprocessing.Pool(nb_processes) as p:
+                results = list(_iter_progress(
+                    p.imap(partial(process, root=root), subject_run),
+                    total=len(subject_run), desc="Recordings"))
+        if results and sum(results) / len(results) < 0.8:
+            sys.exit(1)
+    elif condition == "persubject":
+        subject_run = [(s, r) for s, r in subject_run
+                       if recompute or not (
+                           Path(root) / f"{s}_{r}_noise_persubject.edf").exists()]
+        if not subject_run:
+            print("WARNING: Nothing to process — all output files exist. "
+                  "Pass --recompute to force reprocessing.", flush=True)
+        if no_mp:
+            results = [process_persubject(sr, root=root) for sr in
+                       _iter_progress(subject_run, total=len(subject_run), desc="Recordings")]
+        else:
+            with multiprocessing.Pool(nb_processes) as p:
+                results = list(_iter_progress(
+                    p.imap(partial(process_persubject, root=root), subject_run),
+                    total=len(subject_run), desc="Recordings"))
+        if results and sum(results) / len(results) < 0.8:
+            sys.exit(1)
+    elif condition == "acrosssubject":
+        subjects_todo = [
+            s for s in subjects
+            if s in runs_dict and (
+                recompute or not all(
+                    (Path(root) / f"{s}_{r}_noise_acrosssubject.edf").exists()
+                    for r in runs_dict[s]
+                )
+            )
+        ]
+        if not subjects_todo:
+            print("WARNING: Nothing to process — all output files exist. "
+                  "Pass --recompute to force reprocessing.", flush=True)
+        if no_mp:
+            results = [process_acrosssubject(s, root=root, no_mp=True) for s in
+                       _iter_progress(subjects_todo, total=len(subjects_todo), desc="Subjects")]
+        else:
+            with multiprocessing.Pool(nb_processes, maxtasksperchild=1) as p:
+                results = list(_iter_progress(
+                    p.imap(partial(process_acrosssubject, root=root), subjects_todo),
+                    total=len(subjects_todo), desc="Subjects"))
+        if results and sum(results) / len(results) < 0.8:
+            sys.exit(1)

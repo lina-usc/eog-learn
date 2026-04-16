@@ -16,9 +16,10 @@ def plot_values_topomap(
     vmin=None,
     vmax=None,
     names=None,
-    image_interp="bilinear",
+    image_interp="linear",
     sensors=True,
     show=True,
+    cbar_label="Percentage of EOG in signal",
     **kwargs
 ):
     """Plot a 2D topographic map of EEG data.
@@ -54,6 +55,9 @@ def plot_values_topomap(
         positions. Defaults to True.
     show : bool
         Whether to show the plot or not. Defaults to True.
+    cbar_label : str
+        Label for the colorbar. Defaults to
+        ``'Percentage of EOG in signal'``.
     kwargs : dict
         Valid keyword arguments for mne.viz.plot_topomap
 
@@ -62,14 +66,16 @@ def plot_values_topomap(
     fig : instance of matplotlib.figure.Figure
       The resulting figure object for the heatmap plot
     """
-    if names is None:
-        names = [ch for ch in montage.ch_names if ch in value_dict]
+    if names is not None:
+        channels = names
+    else:
+        channels = [ch for ch in montage.ch_names if ch in value_dict]
 
-    info = mne.create_info(names, sfreq=256, ch_types="eeg")
+    info = mne.create_info(channels, sfreq=256, ch_types="eeg")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         mne.io.RawArray(
-            np.zeros((len(names), 1)), info, copy=None, verbose=False
+            np.zeros((len(channels), 1)), info, copy=None, verbose=False
         ).set_montage(montage)
 
     if axes:
@@ -78,7 +84,7 @@ def plot_values_topomap(
     else:
         fig, ax = plt.subplots(constrained_layout=True)
     im = mne.viz.plot_topomap(
-        [value_dict[ch] for ch in names],
+        [value_dict[ch] for ch in channels],
         pos=info,
         show=False,
         image_interp=image_interp,
@@ -92,6 +98,6 @@ def plot_values_topomap(
     )
 
     if colorbar:
-        fig.colorbar(im[0], ax=axes, shrink=0.6, label="Percentage of EOG in signal")
+        fig.colorbar(im[0], ax=axes, shrink=0.6, label=cbar_label)
     plt_show(show, fig)
     return fig
