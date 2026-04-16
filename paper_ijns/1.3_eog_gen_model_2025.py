@@ -1,13 +1,12 @@
 import marimo
 
-__generated_with = "0.20.3"
+__generated_with = "0.17.6"
 app = marimo.App(width="medium")
 
 
 @app.cell
 def _():
     import marimo as mo
-
     return (mo,)
 
 
@@ -15,7 +14,7 @@ def _():
 def _():
     import sys
     from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent))
+    #sys.path.insert(0, str(Path(__file__).parent))
 
     import numpy as np
     import pandas as pd
@@ -29,7 +28,6 @@ def _():
     from plotting import plot_head
     from eoglearn.io.eegeyenet import pixels_to_radians
     from eoglearn.models.utils import optimal_alpha
-
     return (
         Path,
         eoglearn,

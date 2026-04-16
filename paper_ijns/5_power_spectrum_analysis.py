@@ -1,17 +1,18 @@
 import marimo
 
-__generated_with = "0.10.0"
+__generated_with = "0.20.3"
 app = marimo.App(width="medium")
 
 
 @app.cell
-def __():
+def _():
     import marimo as mo
+
     return (mo,)
 
 
 @app.cell
-def __():
+def _():
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent))
@@ -24,65 +25,57 @@ def __():
     import mne
     from tqdm.notebook import tqdm
     from scipy import stats
+    import matplotlib as mpl
+    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
     import eoglearn
     from eoglearn.viz import plot_values_topomap
-    return (
-        Path, eoglearn, mne, mo, np, pd, plt, mticker,
-        plot_values_topomap, sns, stats, sys, tqdm,
-    )
+
+    return Path, inset_axes, mne, mpl, np, pd, plot_values_topomap, plt, tqdm
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        """
-        # Power Spectrum Analysis
+def _(mo):
+    mo.md("""
+    # Power Spectrum Analysis
 
-        Compares the power spectral density (PSD) across EOG-cleaning approaches:
+    Compares the power spectral density (PSD) across EOG-cleaning approaches:
 
-        - **Original** — band-passed, average-referenced EEG before cleaning
-        - **LSTM** — LSTM regression cleaning (`_clean.edf`)
-        - **ICA** — ICA + ICLabel cleaning (`_ica.edf`)
-        - **Biophysical (global)** — leadfield-based simulation, global scaling (`_sim.edf`)
-        - **Biophysical (local)** — leadfield-based simulation, per-channel scaling (`_simlocal.edf`)
+    - **Original** — band-passed, average-referenced EEG before cleaning
+    - **LSTM** — LSTM regression cleaning (`_clean.edf`)
+    - **ICA** — ICA + ICLabel cleaning (`_ica.edf`)
+    - **Biophysical (global)** — leadfield-based simulation, global scaling (`_sim.edf`)
+    - **Biophysical (local)** — leadfield-based simulation, per-channel scaling (`_simlocal.edf`)
 
-        Also shows the **removed components** (noise EDFs) to characterise what each
-        method discards.
+    Also shows the **removed components** (noise EDFs) to characterise what each
+    method discards.
 
-        **Prerequisites:** Steps 1–4 of the pipeline must have been run.
-        """
-    )
-    return ()
+    **Prerequisites:** Steps 1–4 of the pipeline must have been run.
+    """)
+    return
 
 
 @app.cell
-def __(mo):
-    import os as _os
-    path_input = mo.ui.text(
-        value=_os.environ.get("EOG_PROCESSED_PATH", "processed"),
-        label="Path to processed data directory",
-        full_width=True,
-    )
-    path_input
+def _():
+    path_input = "/Volumes/SSD/eoglearn_results"  # "Path to processed data directory"
     return (path_input,)
 
 
 @app.cell
-def __(Path, mne, np, path_input, tqdm):
+def _(Path, mne, np, tqdm):
     # Cleaning approaches and their EDF suffixes
     CLEANED_KINDS = {
         "original": "original",
-        "LSTM": "clean",
+        "ML": "clean",
         "ICA": "ica",
-        "Biophysical (global)": "sim",
-        "Biophysical (local)": "simlocal",
+        "Biophysical": "sim",
+        "Regression": "simlocal",
     }
     NOISE_KINDS = {
-        "LSTM": "noise",
+        "ML": "noise",
         "ICA": "noiseica",
-        "Biophysical (global)": "noisesim",
-        "Biophysical (local)": "noisesimlocal",
+        "Biophysical": "noisesim",
+        "Regression": "noisesimlocal",
     }
     ALL_SUFFIXES = list(CLEANED_KINDS.values()) + list(NOISE_KINDS.values())
 
@@ -158,21 +151,39 @@ def __(Path, mne, np, path_input, tqdm):
               f"{len(ch_names)} channels, {len(freqs)} frequency bins")
         return psds, freqs, ch_names, recording_ids
 
-    psds, freqs, ch_names, recording_ids = load_psds(path_input.value)
-    return (
-        ALL_SUFFIXES, CLEANED_KINDS, NOISE_KINDS,
-        ch_names, freqs, load_psds, psds, recording_ids,
-    )
+    return CLEANED_KINDS, NOISE_KINDS, load_psds
 
 
 @app.cell
-def __(mo):
-    mo.md("## Mean PSD — cleaned signals vs. original")
-    return ()
+def _(Path, load_psds, np, path_input):
+    _cache = Path(path_input) / "psds_cache.npz"
+
+    if _cache.exists():
+        _f = np.load(_cache, allow_pickle=True)
+        psds = {k: _f[k] for k in _f.files
+                if k not in ("freqs", "ch_names", "recording_ids")}
+        freqs = _f["freqs"]
+        ch_names = list(_f["ch_names"])
+        recording_ids = [tuple(r) for r in _f["recording_ids"]]
+        print(f"Loaded from cache: {_cache}")
+    else:
+        psds, freqs, ch_names, recording_ids = load_psds(path_input)
+        np.savez(_cache, freqs=freqs, ch_names=ch_names,
+                 recording_ids=recording_ids, **psds)
+        print(f"Saved cache to {_cache}")
+    return ch_names, freqs, psds
 
 
 @app.cell
-def __(CLEANED_KINDS, freqs, np, plt, psds):
+def _(mo):
+    mo.md("""
+    ## Mean PSD — cleaned signals vs. original
+    """)
+    return
+
+
+@app.cell
+def _(CLEANED_KINDS, freqs, np, plt, psds):
     COLORS = {
         "original": "black",
         "LSTM": "#e41a1c",
@@ -204,17 +215,19 @@ def __(CLEANED_KINDS, freqs, np, plt, psds):
     ax_psd.set_xlim(freqs[0], freqs[-1])
     fig_psd.tight_layout()
     fig_psd
-    return COLORS, ax_psd, fig_psd, mean_psd
+    return (COLORS,)
 
 
 @app.cell
-def __(mo):
-    mo.md("## Mean PSD — removed components (noise)")
-    return ()
+def _(mo):
+    mo.md("""
+    ## Mean PSD — removed components (noise)
+    """)
+    return
 
 
 @app.cell
-def __(COLORS, NOISE_KINDS, freqs, np, plt, psds):
+def _(COLORS, NOISE_KINDS, freqs, np, plt, psds):
     mean_noise_psd = {
         label: 10 * np.log10(
             psds[suffix].mean(axis=(0, 1))
@@ -238,27 +251,25 @@ def __(COLORS, NOISE_KINDS, freqs, np, plt, psds):
     ax_noise.set_xlim(freqs[0], freqs[-1])
     fig_noise.tight_layout()
     fig_noise
-    return ax_noise, fig_noise, mean_noise_psd
+    return
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        """
-        ## Noise fraction per frequency
+def _(mo):
+    mo.md("""
+    ## Noise fraction per frequency
 
-        Proportion of original power that each method removes:
-        `noise_fraction(f) = PSD_noise(f) / PSD_original(f)`
+    Proportion of original power that each method removes:
+    `noise_fraction(f) = PSD_noise(f) / PSD_original(f)`
 
-        Values near 1 indicate the approach removes most of the power at that frequency;
-        values near 0 indicate little removal.
-        """
-    )
-    return ()
+    Values near 1 indicate the approach removes most of the power at that frequency;
+    values near 0 indicate little removal.
+    """)
+    return
 
 
 @app.cell
-def __(CLEANED_KINDS, COLORS, NOISE_KINDS, freqs, np, plt, psds):
+def _(CLEANED_KINDS, COLORS, NOISE_KINDS, freqs, np, plt, psds):
     # noise / original (linear ratio, per recording then averaged)
     orig_suffix = CLEANED_KINDS["original"]
     noise_frac = {}
@@ -282,24 +293,33 @@ def __(CLEANED_KINDS, COLORS, NOISE_KINDS, freqs, np, plt, psds):
     ax_frac.set_ylim(bottom=0)
     fig_frac.tight_layout()
     fig_frac
-    return ax_frac, fig_frac, noise_frac, orig_suffix, ratio
+    return
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        """
-        ## PSD topomaps — noise fraction by frequency band
+def _(mo):
+    mo.md("""
+    ## PSD topomaps — noise fraction by frequency band
 
-        Spatial distribution of the noise fraction across EEG channels at frequency
-        bands where EOG artefacts dominate.
-        """
-    )
-    return ()
+    Spatial distribution of the noise fraction across EEG channels at frequency
+    bands where EOG artefacts dominate.
+    """)
+    return
 
 
 @app.cell
-def __(NOISE_KINDS, ch_names, freqs, mne, np, plt, plot_values_topomap, psds):
+def _(
+    NOISE_KINDS,
+    ch_names,
+    freqs,
+    inset_axes,
+    mne,
+    mpl,
+    np,
+    plot_values_topomap,
+    plt,
+    psds,
+):
     BANDS = {
         "δ (0.5–4 Hz)": (0.5, 4.0),
         "θ (4–8 Hz)": (4.0, 8.0),
@@ -308,65 +328,79 @@ def __(NOISE_KINDS, ch_names, freqs, mne, np, plt, plot_values_topomap, psds):
     montage = mne.channels.make_standard_montage("GSN-HydroCel-129")
     orig_suf = "original"
 
+
     n_bands = len(BANDS)
     n_methods = len(NOISE_KINDS)
 
     fig_topo, axes_topo = plt.subplots(
-        n_bands, n_methods,
-        figsize=(3 * n_methods, 3 * n_bands),
+        n_methods, n_bands,
+        figsize=(2 * n_bands, 2 * n_methods),
         squeeze=False,
     )
+    fig_topo.subplots_adjust(bottom=0, top=0.93, left=0.05, right=0.99, hspace=0.05, wspace=0.05) 
 
-    for row, (_band_label, (_fmin_b, _fmax_b)) in enumerate(BANDS.items()):
+    for col, (_band_label, (_fmin_b, _fmax_b)) in enumerate(BANDS.items()):
         _band_mask = (freqs >= _fmin_b) & (freqs < _fmax_b)
 
-        for col, (_method_label, _noise_suffix) in enumerate(NOISE_KINDS.items()):
+        for row, (_method_label, _noise_suffix) in enumerate(NOISE_KINDS.items()):
             # Per-channel noise fraction in band: mean over freq bins then recordings
             _orig_band = psds[orig_suf][:, :, _band_mask].mean(axis=2)  # (rec, ch)
             _noise_band = psds[_noise_suffix][:, :, _band_mask].mean(axis=2)
             frac_ch = (_noise_band / np.maximum(_orig_band, 1e-30)).mean(axis=0) * 100
 
-            ax = axes_topo[row, col]
+            _ax = axes_topo[row, col]
             plot_values_topomap(
                 dict(zip(ch_names, frac_ch)),
                 montage,
-                axes=ax,
+                axes=_ax,
                 vmin=0, vmax=100,
-                colorbar=(col == n_methods - 1),
+                colorbar=False, #(col == n_methods - 1),
                 cbar_label="Noise fraction (%)",
                 show=False,
             )
+
             if row == 0:
-                ax.set_title(_method_label, fontsize=9)
+                _ax.set_title(_band_label, pad=28)   # extra padding so title clears the colorbar
+                # colorbar above this axes
+                _norm = mpl.colors.Normalize(vmin=0, vmax=100)
+                _sm = mpl.cm.ScalarMappable(cmap="RdBu_r", norm=_norm)
+                _sm.set_array([])
+                _cbar_ax = inset_axes(
+                    _ax, width="85%", height="5%", loc="lower center",
+                    bbox_to_anchor=(0, 1.02, 1, 1), bbox_transform=_ax.transAxes,
+                    borderpad=0,
+                )
+                _cbar_ax.tick_params(labelsize=10)
+                cbar = fig_topo.colorbar(_sm, cax=_cbar_ax, orientation="horizontal")
+                _cbar_ax.xaxis.set_ticks_position("top")
+                cbar.locator = mpl.ticker.MaxNLocator(nbins=1)
+                cbar.update_ticks()
+        
             if col == 0:
-                ax.set_ylabel(_band_label, fontsize=9)
+                _ax.set_ylabel(_method_label)
 
-    fig_topo.suptitle("Noise fraction topomap by frequency band and method",
-                      y=1.01)
+
+    fig_topo.savefig("effect_spectrum.png", dpi=300)
     fig_topo.tight_layout()
+
     fig_topo
-    return (
-        BANDS, axes_topo, col, fig_topo,
-        montage, n_bands, n_methods, orig_suf, row,
-    )
+    return (BANDS,)
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        """
-        ## Frontal vs. posterior PSD comparison
+def _(mo):
+    mo.md("""
+    ## Frontal vs. posterior PSD comparison
 
-        EOG artefacts are largest at frontal electrodes. Comparing how cleaning
-        affects PSD at frontal vs. posterior sites shows whether methods
-        selectively target the artefact topography.
-        """
-    )
-    return ()
+    EOG artefacts are largest at frontal electrodes. Comparing how cleaning
+    affects PSD at frontal vs. posterior sites shows whether methods
+    selectively target the artefact topography.
+    """)
+    return
 
 
 @app.cell
-def __(CLEANED_KINDS, COLORS, ch_names, freqs, np, plt, psds):
+def _(CLEANED_KINDS, COLORS, ch_names, freqs, np, plt, psds):
     # Frontal channels: E1–E32 area (anterior); posterior: E65–E128
     frontal = [c for c in ch_names
                if c.startswith("E") and 1 <= int(c[1:]) <= 32]
@@ -394,19 +428,19 @@ def __(CLEANED_KINDS, COLORS, ch_names, freqs, np, plt, psds):
     fig_fp.suptitle("PSD by scalp region — original vs. cleaned signals")
     fig_fp.tight_layout()
     fig_fp
-    return (
-        axes_fp, fig_fp, frontal, frontal_idx, posterior, posterior_idx,
-    )
+    return
 
 
 @app.cell
-def __(mo):
-    mo.md("## Band-power summary — mean ± SD across recordings")
-    return ()
+def _(mo):
+    mo.md("""
+    ## Band-power summary — mean ± SD across recordings
+    """)
+    return
 
 
 @app.cell
-def __(BANDS, CLEANED_KINDS, ch_names, freqs, np, pd, psds):
+def _(BANDS, CLEANED_KINDS, ch_names, freqs, np, pd, psds):
     rows = []
     frontal_ch = [c for c in ch_names
                   if c.startswith("E") and 1 <= int(c[1:]) <= 32]
@@ -428,7 +462,32 @@ def __(BANDS, CLEANED_KINDS, ch_names, freqs, np, pd, psds):
 
     band_summary = pd.DataFrame(rows).sort_values(["band", "approach"])
     band_summary
-    return band_summary, frontal_ch, frontal_i, rows
+    return
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
+def _():
+    return
 
 
 if __name__ == "__main__":

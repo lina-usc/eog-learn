@@ -6,7 +6,7 @@ def overlay_raws_stack(
     raws,
     picks=None,
     start=0.0,
-    duration=None,
+    duration=10,
     resample=True,
     scale_to_uV=False,
     offset_factor=1.2,
@@ -36,8 +36,7 @@ def overlay_raws_stack(
     start : float
         Start time in seconds. Defaults to 0.
     duration : float | None
-        Duration in seconds. If ``None``, the shortest available segment
-        from ``start`` is used.
+        Duration in seconds. Default to 10.
     resample : bool
         If ``True``, resample raws[1:] to match raws[0] sample rate.
         Defaults to ``True``.
@@ -98,31 +97,11 @@ def overlay_raws_stack(
             if sfreq != raw.info["sfreq"]:
                 raws[no + 1] = raw.resample(sfreq, npad="auto")
 
-    start_samp = int(np.round(start * sfreq))
-    if duration is None:
-        n_samps = min(raw.n_times for raw in raws) - start_samp
-        if n_samps <= 0:
-            raise ValueError(
-                "Start time is beyond the length of one or more Raw objects."
-            )
-    else:
-        n_samps = int(np.round(duration * sfreq))
-
-    times_full = raws[0].times
-    if start_samp + n_samps > raws[0].n_times:
-        n_samps = raws[0].n_times - start_samp
-    for raw in raws[1:]:
-        if start_samp + n_samps > raw.n_times:
-            n_samps = min(n_samps, raw.n_times - start_samp)
-    if n_samps <= 0:
-        raise ValueError(
-            "Requested time window has zero length after trimming to data length."
-        )
-
-    times = times_full[start_samp : start_samp + n_samps]
+    times = raws[0].copy().crop(tmin=start, tmax=start+duration,
+                                include_tmax=False).times + start
     data = np.stack(
         [
-            raw.get_data(picks=picks)[:, start_samp : start_samp + n_samps]
+            raw.get_data(picks=picks, tmin=start, tmax=start+duration)
             for raw in raws
         ]
     )
@@ -164,17 +143,17 @@ def overlay_raws_stack(
                 label=labels[no] if labels and i == 0 else None,
             )
 
-    ax.set_yticks(centers)
-    ax.set_yticklabels(picks)
-    ax.invert_yaxis()
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel(ylab)
-    ax.set_title(title)
-    ax.set_xlim(times[0], times[-1])
-
     ymin = offsets[-1] - spacing * 0.3
     ymax = offsets[0] + spacing * 0.3
     ax.set_ylim(ymin, ymax + 0.1 * (ymax - ymin))
+    ax.set_yticks(centers)
+    ax.set_yticklabels(picks)
+    ax.set_ylabel(ylab)
+
+    ax.set_xlabel("Time (s)")
+    ax.set_xlim(times[0], times[-1])
+
+    ax.set_title(title)
 
     if annotations:
         display_coords = fig.transFigure.transform((0, 0.885))
@@ -193,7 +172,7 @@ def overlay_raws_stack(
                 ax.text(onset, data_coords[1], description, ha="center")
 
     if labels:
-        ax.legend(loc="upper center", ncol=5, frameon=True)
+        ax.legend(loc="upper center", ncol=2, frameon=True)
 
     ax.grid(True, linestyle=":", linewidth=0.4)
     fig.tight_layout()

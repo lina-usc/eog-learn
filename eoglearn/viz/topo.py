@@ -66,14 +66,16 @@ def plot_values_topomap(
     fig : instance of matplotlib.figure.Figure
       The resulting figure object for the heatmap plot
     """
-    if names is None:
-        names = [ch for ch in montage.ch_names if ch in value_dict]
+    if names is not None:
+        channels = names
+    else:
+        channels = [ch for ch in montage.ch_names if ch in value_dict]
 
-    info = mne.create_info(names, sfreq=256, ch_types="eeg")
+    info = mne.create_info(channels, sfreq=256, ch_types="eeg")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         mne.io.RawArray(
-            np.zeros((len(names), 1)), info, copy=None, verbose=False
+            np.zeros((len(channels), 1)), info, copy=None, verbose=False
         ).set_montage(montage)
 
     if axes:
@@ -82,7 +84,7 @@ def plot_values_topomap(
     else:
         fig, ax = plt.subplots(constrained_layout=True)
     im = mne.viz.plot_topomap(
-        [value_dict[ch] for ch in names],
+        [value_dict[ch] for ch in channels],
         pos=info,
         show=False,
         image_interp=image_interp,

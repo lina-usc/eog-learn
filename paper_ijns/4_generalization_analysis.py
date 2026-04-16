@@ -1,17 +1,18 @@
 import marimo
 
-__generated_with = "0.10.0"
+__generated_with = "0.20.3"
 app = marimo.App(width="medium")
 
 
 @app.cell
-def __():
+def _():
     import marimo as mo
+
     return (mo,)
 
 
 @app.cell
-def __():
+def _():
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent))
@@ -19,6 +20,7 @@ def __():
     import numpy as np
     import pandas as pd
     import matplotlib.pyplot as plt
+    import matplotlib as mpl
     import seaborn as sns
     import mne
     from tqdm.notebook import tqdm
@@ -29,51 +31,49 @@ def __():
                           adjust_events_for_RT, get_snrs)
     from eoglearn.io.eegeyenet import get_annotations_diff
     from eoglearn.viz import plot_values_topomap
+
     return (
-        Path, adjust_events_for_RT, eoglearn, get_annotations_diff,
-        get_epochs, get_evoked, get_snrs, mne, np, pd, plt,
-        plot_values_topomap, rms, sns, stats, sys, tqdm,
+        Path,
+        adjust_events_for_RT,
+        get_evoked,
+        get_snrs,
+        mne,
+        mpl,
+        np,
+        pd,
+        plot_values_topomap,
+        plt,
+        sns,
+        stats,
+        tqdm,
     )
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        """
-        # LSTM Generalisation Analysis
+def _(mo):
+    mo.md("""
+    # LSTM Generalisation Analysis
 
-        Compares LSTM EOG-cleaning performance across three training/testing regimes:
+    Compares LSTM EOG-cleaning performance across three training/testing regimes:
 
-        | Condition | Training data | Test data |
-        |-----------|--------------|-----------|
-        | **Per-recording** | Same recording (train = test) | Same recording |
-        | **Per-subject** | All other runs of same subject | Held-out run |
-        | **Across-subject** | All runs from all other subjects | Held-out subject |
+    | Condition | Training data | Test data |
+    |-----------|--------------|-----------|
+    | **Per-recording** | Same recording (train = test) | Same recording |
+    | **Per-subject** | All other runs of same subject | Held-out run |
+    | **Across-subject** | All runs from all other subjects | Held-out subject |
 
-        **Prerequisites:** run `1.1_run_eog_lstm_regression_mp.py` for each condition
-        (`condition = "perrecording"`, `"persubject"`, `"acrosssubject"`) to produce the
-        corresponding `*_clean_<condition>.edf` / `*_noise_<condition>.edf` files.
-        The per-recording results use the standard `*_clean.edf` / `*_noise.edf` names.
-        """
-    )
-    return ()
+    **Prerequisites:** run `1.1_run_eog_lstm_regression_mp.py` for each condition
+    (`condition = "perrecording"`, `"persubject"`, `"acrosssubject"`) to produce the
+    corresponding `*_clean_<condition>.edf` / `*_noise_<condition>.edf` files.
+    The per-recording results use the standard `*_clean.edf` / `*_noise.edf` names.
+    """)
+    return
 
 
 @app.cell
-def __(mo):
-    import os as _os
-    path_input = mo.ui.text(
-        value=_os.environ.get("EOG_PROCESSED_PATH", "processed"),
-        label="Path to processed data directory",
-        full_width=True,
-    )
-    path_input
-    return (path_input,)
+def _(Path, adjust_events_for_RT, get_evoked, get_snrs, mne, pd, tqdm):
+    path_input = "/Volumes/SSD/eoglearn_results"  # "Path to processed data directory"
 
-
-@app.cell
-def __(Path, adjust_events_for_RT, get_annotations_diff, get_epochs,
-       get_evoked, get_snrs, mne, np, pd, path_input, tqdm):
     # Maps condition label → suffix used in EDF filenames
     CONDITION_SUFFIXES = {
         "per-recording": "clean",
@@ -101,6 +101,7 @@ def __(Path, adjust_events_for_RT, get_annotations_diff, get_epochs,
         """
         files = sorted(Path(path).glob("*_original.edf"))
         dfs = []
+        dfs_pct = []    
 
         for fname_orig in tqdm(files, desc="Loading recordings"):
             stem = fname_orig.name.replace("_original.edf", "")
@@ -146,45 +147,66 @@ def __(Path, adjust_events_for_RT, get_annotations_diff, get_epochs,
                     evoked_mapped[cond] = evoked[cond]
 
                 for ev_id in event_id:
-                    snr_df, _ = get_snrs(
+                    snr_df, topo_df = get_snrs(
                         evoked_mapped, ev_id,
                         kinds=tuple(CONDITION_SUFFIXES.keys()))
                     snr_df["subject"] = subject
                     snr_df["run"] = run
                     dfs.append(snr_df)
 
+                    for (cond, kind), pct_df in topo_df.items():
+                        pct_df = pct_df.copy()
+                        pct_df["approach"] = kind
+                        pct_df["condition"] = cond
+                        pct_df["subject"] = subject
+                        pct_df["run"] = run
+                        dfs_pct.append(pct_df)
+
+
             except Exception as e:
                 print(f"Skipping {stem}: {e}")
                 continue
 
         if not dfs:
-            return pd.DataFrame()
-        return pd.concat(dfs, ignore_index=True)
+            return pd.DataFrame(), pd.DataFrame() 
+        return pd.concat(dfs, ignore_index=True), pd.concat(dfs_pct, ignore_index=True)
 
-    gen_df = load_generalization_data(path_input.value)
+    gen_cache = Path(path_input) / "gen_df_cache.csv"
+    pct_cache = Path(path_input) / "pct_df_cache.csv"
+    if gen_cache.exists():
+        gen_df = pd.read_csv(gen_cache)
+        pct_df = pd.read_csv(pct_cache)
+        print(f"Loaded from cache: {gen_cache}, {pct_cache}")
+    else:
+        gen_df, pct_df = load_generalization_data(path_input)
+        gen_df.to_csv(gen_cache, index=False)
+        pct_df.to_csv(pct_cache, index=False)
+        print(f"Saved cache to {gen_cache} and  {pct_cache}")
+
     n_rec = gen_df[['subject', 'run']].drop_duplicates().shape[0] if not gen_df.empty else 0
     print(f"Loaded {len(gen_df)} rows from {n_rec} recordings")
-    return (CONDITION_SUFFIXES, ET_MAPPING, gen_df, load_generalization_data)
+    return gen_df, pct_df
 
 
 @app.cell
-def __(mo):
-    mo.md("## SNR comparison across generalisation conditions")
-    return ()
+def _(mo):
+    mo.md("""
+    ## SNR comparison across generalisation conditions
+    """)
+    return
 
 
 @app.cell
-def __(gen_df, pd, plt, sns):
+def _(gen_df, pd, plt, sns):
     if gen_df.empty:
         fig_snr, ax_snr = plt.subplots()
         ax_snr.text(0.5, 0.5, "No data loaded", ha="center", va="center")
     else:
         # Average SNR across channels per recording/condition
-        snr_avg = (gen_df
-                   .groupby(["subject", "run", "approach", "condition",
-                              "event_id"])["snr"]
-                   .mean()
-                   .reset_index())
+        snr_avg = (gen_df.drop(columns=["Cz"])
+                   .set_index(["subject", "run", "approach", "condition",
+                              "event_id"]).mean(axis=1)
+                   .reset_index()).rename(columns={0: "snr"})
 
         CONDITION_ORDER = ["per-recording", "per-subject", "across-subject"]
         snr_avg["approach"] = pd.Categorical(
@@ -203,24 +225,23 @@ def __(gen_df, pd, plt, sns):
             "LSTM cleaning performance by generalisation condition", y=1.02)
         fig_snr.tight_layout()
     fig_snr
-    return axes_snr, fig_snr, snr_avg
+    return (snr_avg,)
 
 
 @app.cell
-def __(mo):
-    mo.md("## Statistical tests (paired t-tests across conditions)")
-    return ()
+def _(mo):
+    mo.md("""
+    ## Statistical tests (paired t-tests across conditions)
+    """)
+    return
 
 
 @app.cell
-def __(gen_df, np, pd, stats):
+def _(gen_df, np, pd, snr_avg, stats):
     if gen_df.empty:
         stat_df = pd.DataFrame()
     else:
-        snr_subj = (gen_df
-                    .groupby(["subject", "run", "approach", "condition"])["snr"]
-                    .mean()
-                    .reset_index())
+        snr_subj = snr_avg.groupby(["subject", "run", "approach", "condition"])["snr"].mean().reset_index()
 
         rows = []
         pairs = [
@@ -249,17 +270,30 @@ def __(gen_df, np, pd, stats):
         stat_df = pd.DataFrame(rows)
 
     stat_df
-    return pairs, rows, snr_subj, stat_df
+    return
 
 
 @app.cell
-def __(mo):
-    mo.md("## Topomap — noise reduction per condition")
-    return ()
+def _(mo):
+    mo.md("""
+    ## Topomap — noise reduction per condition
+    """)
+    return
 
 
 @app.cell
-def __(gen_df, mne, np, plt, plot_values_topomap):
+def _(pct_df):
+    #long_gen_df = gen_df.melt(id_vars=['approach', 'condition', 'event_id', 'subject', 'run'], 
+    #                          var_name="ch_name", value_name="snr")
+
+    long_pct_df = pct_df.melt(
+        id_vars=["approach", "condition", "event_id", "subject", "run"],
+        var_name="ch_name", value_name="percent")
+    return (long_pct_df,)
+
+
+@app.cell
+def _(gen_df, long_pct_df, mne, mpl, plot_values_topomap, plt):
     if gen_df.empty:
         fig_topo = plt.figure()
     else:
@@ -267,50 +301,67 @@ def __(gen_df, mne, np, plt, plot_values_topomap):
 
         CONDITION_ORDER_TOPO = ["per-recording", "per-subject", "across-subject"]
 
-        # Compute per-channel mean SNR across subjects (post-saccade window)
-        snr_ch = (gen_df[gen_df["condition"] == "post"]
-                  .groupby(["approach", "ch_name"])["snr"]
-                  .mean()
-                  .reset_index())
-
-        vmin = snr_ch["snr"].min()
-        vmax = snr_ch["snr"].max()
-
         fig_topo, axes_topo = plt.subplots(
-            1, len(CONDITION_ORDER_TOPO), figsize=(14, 4))
+            2, len(CONDITION_ORDER_TOPO), figsize=(6, 3.4))
+        fig_topo.subplots_adjust(bottom=0, top=0.93, left=0.05, right=0.84, hspace=0.05, wspace=0.05) 
 
-        for _ax, _cond in zip(axes_topo, CONDITION_ORDER_TOPO):
-            _dat = snr_ch[snr_ch["approach"] == _cond]
-            ch_names = _dat["ch_name"].tolist()
-            values = _dat["snr"].values
-            plot_values_topomap(
-                _ax, values, ch_names, montage,
-                vmin=vmin, vmax=vmax,
-                cbar_label="SNR (dB)")
-            _ax.set_title(_cond)
+        for rt_cond, ax_row, y_offset in zip(["pre", "post"], axes_topo, [0.47, 0]):
+            # Compute per-channel mean percentage noise reduction
+            pct_ch = (long_pct_df[long_pct_df["condition"] == rt_cond]
+                      .groupby(["approach", "ch_name"])["percent"]
+                      .mean()
+                      .reset_index())
 
-        fig_topo.suptitle(
-            "Post-saccade SNR topomap per generalisation condition")
-        fig_topo.tight_layout()
+            vmax = pct_ch["percent"].abs().max()
+            vmin = -vmax
+
+            for _ax, _cond in zip(ax_row, CONDITION_ORDER_TOPO):
+                _dat = pct_ch[pct_ch["approach"] == _cond]
+                ch_names = _dat["ch_name"].tolist()
+                values = _dat["percent"].values
+                plot_values_topomap(
+                    dict(zip(ch_names, values)), montage, axes=_ax,
+                    vmin=vmin, vmax=vmax,
+                    colorbar=False)
+                if rt_cond == "pre":
+                    _ax.set_title(_cond.replace("subject", "participant"))
+
+            # Single shared colorbar on the left
+            norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+            sm = mpl.cm.ScalarMappable(cmap="RdBu_r", norm=norm)
+            sm.set_array([])
+            cbar_ax = fig_topo.add_axes([0.85, 0.08+y_offset, 0.02, 0.3])
+            cbar = fig_topo.colorbar(sm, cax=cbar_ax, label="Noise removal (%)")
+            cbar.ax.yaxis.set_label_position("right")
+            cbar.ax.yaxis.tick_right()
+
+        fig_topo.text(0.02, 0.71, "Pre-RT", rotation=90,
+                horizontalalignment='left', verticalalignment='center')
+        fig_topo.text(0.02, 0.29, "Post-RT", rotation=90,
+                horizontalalignment='left', verticalalignment='center')
+
+
+        #fig_topo.tight_layout()
+        #fig_topo.tight_layout(pad=0, rect=(0.07, 0, 1.3, 0.98))
+        fig_topo.savefig("generalization.png", dpi=300)
     fig_topo
-    return (
-        CONDITION_ORDER_TOPO, axes_topo, fig_topo,
-        montage, snr_ch, vmax, vmin,
-    )
+    return
 
 
 @app.cell
-def __(mo):
-    mo.md("## Summary table — mean SNR (dB) and degradation vs. per-recording")
-    return ()
+def _(mo):
+    mo.md("""
+    ## Summary table — mean SNR (dB) and degradation vs. per-recording
+    """)
+    return
 
 
 @app.cell
-def __(gen_df, np, pd):
-    if gen_df.empty:
+def _(long_gen_df, np, pd):
+    if long_gen_df.empty:
         summary_df = pd.DataFrame()
     else:
-        summary = (gen_df
+        summary = (long_gen_df
                    .groupby(["approach", "condition"])["snr"]
                    .agg(mean=np.mean, std=np.std, median=np.median)
                    .reset_index())
@@ -326,7 +377,17 @@ def __(gen_df, np, pd):
         summary_df = summary.sort_values(["condition", "approach"])
 
     summary_df
-    return baseline, summary, summary_df
+    return
+
+
+@app.cell
+def _():
+    return
+
+
+@app.cell
+def _():
+    return
 
 
 if __name__ == "__main__":
